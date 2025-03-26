@@ -33,65 +33,53 @@ cd ros-docker
 ## Execution
 ### Starting Containers
 
-Each ROS/ROS2 image has corresponding Makefile commands for easy execution. First, start at repo directory and run the build command:
+Each ROS2 image has corresponding Makefile commands for easy execution. First, start at repo directory and run the build command:
 ```bash
 cd ros-docker
-make <ros-distro>.build # No CUDA support
-make <ros-distro>.build.cuda # With CUDA support
-make <ros-distro>.build.l4t<l4t-version> # No CUDA support
+make <te3003>.build # No CUDA support
+make <te3003>.build.cuda # With CUDA support
+make <te3003>.build.l4t<l4t-version> # No CUDA support
 ```
 Then, run the run command for creating the container:
 ```bash
-make <ros-distro>.create # No CUDA support
-make <ros-distro>.create.cuda # With CUDA support
-make <ros-distro>.create.l4t<l4t-version> # No CUDA support
+make <te3003>.create # No CUDA support
+make <te3003>.create.cuda # With CUDA support
+make <te3003>.create.l4t<l4t-version> # No CUDA support
 ```
 Finally, run the start command for starting the container and entering the shell:
 ```bash
-make <ros-distro>.up # Start container
-make <ros-distro>.shell # Enter container terminal
+make <te3003>.up # Start container
+make <te3003>.shell # Enter container terminal
 ```
 
 ### Deleting Containers
 The makefile containes further commands to delete containers:
 ```bash
-make <ros-distro>.down # Stop container
-make <ros-distro>.remove # Remove container
+make <te3003>.down # Stop container
+make <te3003>.remove # Remove container
 ```
 
 ## Current Images
 
-- [ROS Noetic](./docker/Dockerfile.noetic)
+- [ROS Humble](./docker/Dockerfile.te3003)
 ```bash
-make noetic.build
-make noetic.create
+make te3003.build
+make te3003.create
 ```
-
-- [ROS Noetic with CUDA11.8](./docker/Dockerfile.noetic.cuda)
+- [ROS Humble with CUDA11.8](./docker/Dockerfile.te3003.cuda)
 ```bash
-make noetic.build.cuda
-make noetic.create.cuda
-```
-
-- [ROS Humble](./docker/Dockerfile.humble)
-```bash
-make humble.build
-make humble.create
-```
-- [ROS Humble with CUDA11.8](./docker/Dockerfile.humble.cuda)
-```bash
-make humble.build.cuda
-make humble.create.cuda
+make te3003.build.cuda
+make te3003.create.cuda
 ```
 
 ## Mounting Directories
 The docker run commands mount selected folders for easy access to the host machine files. Files to mount are called as arguments to the make commands. For example, to mount a directory "ros-workspace" in the repository folder to the container, run the following command:
 ```bash
-make <distro>.create volumes="ros-workspace"
+make <te3003>.create volumes="ros-workspace"
 ```
 Similarly, to mount multiple directories, separate them with a comma:
 ```bash
-make <distro>.create volumes="ros-workspace,~/other-folder,/home/user/Documents/another-folder"
+make <te3003>.create volumes="ros-workspace,~/other-folder,/home/user/Documents/another-folder"
 ```
 Any folder mounted from the host machine will be available in the container at the /workspace directory, where the container starts.
 
@@ -99,8 +87,8 @@ Any folder mounted from the host machine will be available in the container at t
 ### Editing container name
 Default names for containers are "ros-<distro>". This name is shared between cuda and non-cuda containers. When creating the name of the container may be edited by setting the "name" variable:
 ```bash
-make <distro>.create name="my-container" # no volume
-make <distro>.create name="my-container" volumes="ros-workspace" # with volume
+make <te3003>.create name="my-container" # no volume
+make <te3003>.create name="my-container" volumes="ros-workspace" # with volume
 ```
 Consider that docker commands on this container must be run manually, including exec, stop, and remove commands. Remember to include user on docker exec:
 ```bash
@@ -109,9 +97,16 @@ docker exec -it --user $(shell id -u):$(shell id -g) my-container bash
 ### Running alternate CUDA images
 CUDA images are available in different versions and types. Versions compatible may vary for your system and the docker Ubuntu version. For compatibility, only 11.8 and 12.1 are accepted, defaulting to 11.8. Image type can be set to "runtime" to include only capability to run CUDA compiled code, while "devel" and "cudnn" images allow for CUDA code compilation and cuDNN support, respectively. Check available images at the [NVIDIA CUDA Docker Hub](https://hub.docker.com/r/nvidia/cuda) and follow the prompt in [the run script](/docker/scripts/build.bash) to set the desired image.
 ```bash
-make <distro>.build.cuda cuda-image="runtime" cuda-version="11.8" # Default
+make <te3003>.build.cuda cuda-image="runtime" cuda-version="11.8" # Default
 ```
-By default, both Humble and Noetic containres will default to image "runtime" and version "11.8" if no argument is given.
+By default, Humble containers will default to image "runtime" and version "11.8" if no argument is given.
 
 ## Docker container settings
 The docker containers are set to use the host network and display, as well as devices such as the webcam. On the run scripts at docker/scripts, these settings may be edited. 
+
+# After every requirement is installed
+```bash
+make te3003.build.cuda # remove cuda if necessary
+make te3003.create.cuda volumes="~/my_working_folder" # mount a folder you want to work on
+make te3003.shell
+```
