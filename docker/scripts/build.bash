@@ -95,10 +95,13 @@ if [ "$ROS_DISTRO" == "te3003" ]; then
         HUMBLE_IMAGE_NAME="emilianh/ros:humble-cuda"
         HUMBLE_DOCKER_FILE="$PWD/docker/Dockerfile.humble.cuda"
     fi
+    BASE_IMAGE=$HUMBLE_IMAGE_NAME
     echo "Building humble image: $HUMBLE_IMAGE_NAME"
     docker build -t $HUMBLE_IMAGE_NAME \
         -f $HUMBLE_DOCKER_FILE $PWD --build-arg USER_UID=$USER_UID --build-arg USER_GID=$USER_GID --build-arg CUDA_IMAGE=$CUDA_IMAGE
 fi
 
 docker build -t $IMAGE_NAME \
-    -f $DOCKER_FILE $PWD --build-arg USER_UID=$USER_UID --build-arg USER_GID=$USER_GID --build-arg CUDA_IMAGE=$CUDA_IMAGE --build-arg CUDA_VERSION=$CUDA_VERSION
+    -f $DOCKER_FILE $PWD --build-arg USER_UID=$USER_UID  \
+    --build-arg USER_GID=$USER_GID --build-arg CUDA_IMAGE=$CUDA_IMAGE \
+    --build-arg CUDA_VERSION=$CUDA_VERSION --build-arg BASE_IMAGE=$BASE_IMAGE
