@@ -1,0 +1,8 @@
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+
+ENV DEBIAN_FRONTEND=noninteractive
+ARG CUDA_VERSION="11.8"
+
+COPY docker/install_torch.sh /tmp/install_torch.sh --cuda-version=${CUDA_VERSION}
+RUN /tmp/install_torch.sh
