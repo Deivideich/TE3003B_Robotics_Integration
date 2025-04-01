@@ -1,6 +1,26 @@
 # Docker images and commands for ROS/ROS2 Development
 This repository contains easy to use commands for generating custom docker images for ROS/ROS2. The images are not based from the official ROS/ROS2 images so as to allow for further customization, such as CUDA or L4T support. 
 
+## Index
+- [Docker images and commands for ROS/ROS2 Development](#docker-images-and-commands-for-rosros2-development)
+  - [Index](#index)
+  - [Prerequisites](#prerequisites)
+    - [Docker engine installation](#docker-engine-installation)
+    - [Docker group](#docker-group)
+    - [NVIDIA Container Toolkit](#nvidia-container-toolkit)
+    - [Nvidia Jetson Devices](#nvidia-jetson-devices)
+    - [Cloning the repository](#cloning-the-repository)
+  - [Execution](#execution)
+    - [Starting Containers](#starting-containers)
+    - [Deleting Containers](#deleting-containers)
+  - [Current Images](#current-images)
+  - [Mounting Directories](#mounting-directories)
+  - [Additional Options](#additional-options)
+    - [Editing container name](#editing-container-name)
+    - [Running alternate CUDA images](#running-alternate-cuda-images)
+  - [Docker container settings](#docker-container-settings)
+- [Installation for TE3003B class](#installation-for-te3003b-class)
+
 ## Prerequisites
 ### Docker engine installation
 First, install the docker engine on your host machine. The installation instructions can be found [here](https://docs.docker.com/engine/install/).
@@ -36,27 +56,27 @@ cd ros-docker
 Each ROS2 image has corresponding Makefile commands for easy execution. First, start at repo directory and run the build command:
 ```bash
 cd ros-docker
-make <te3003>.build # No CUDA support
-make <te3003>.build.cuda # With CUDA support
-make <te3003>.build.l4t<l4t-version> # No CUDA support
+make te3003.build # No CUDA support
+make te3003.build.cuda # With CUDA support
+make te3003.build.l4t<l4t-version> # No CUDA support
 ```
 Then, run the run command for creating the container:
 ```bash
-make <te3003>.create # No CUDA support
-make <te3003>.create.cuda # With CUDA support
-make <te3003>.create.l4t<l4t-version> # No CUDA support
+make te3003.create # No CUDA support
+make te3003.create.cuda # With CUDA support
+make te3003.create.l4t<l4t-version> # No CUDA support
 ```
 Finally, run the start command for starting the container and entering the shell:
 ```bash
-make <te3003>.up # Start container
-make <te3003>.shell # Enter container terminal
+make te3003.up # Start container
+make te3003.shell # Enter container terminal
 ```
 
 ### Deleting Containers
 The makefile containes further commands to delete containers:
 ```bash
-make <te3003>.down # Stop container
-make <te3003>.remove # Remove container
+make te3003.down # Stop container
+make te3003.remove # Remove container
 ```
 
 ## Current Images
@@ -75,11 +95,11 @@ make te3003.create.cuda
 ## Mounting Directories
 The docker run commands mount selected folders for easy access to the host machine files. Files to mount are called as arguments to the make commands. For example, to mount a directory "ros-workspace" in the repository folder to the container, run the following command:
 ```bash
-make <te3003>.create volumes="ros-workspace"
+make te3003.create volumes="ros-workspace"
 ```
 Similarly, to mount multiple directories, separate them with a comma:
 ```bash
-make <te3003>.create volumes="ros-workspace,~/other-folder,/home/user/Documents/another-folder"
+make te3003.create volumes="ros-workspace,~/other-folder,/home/user/Documents/another-folder"
 ```
 Any folder mounted from the host machine will be available in the container at the /workspace directory, where the container starts.
 
@@ -87,8 +107,8 @@ Any folder mounted from the host machine will be available in the container at t
 ### Editing container name
 Default names for containers are "ros-<distro>". This name is shared between cuda and non-cuda containers. When creating the name of the container may be edited by setting the "name" variable:
 ```bash
-make <te3003>.create name="my-container" # no volume
-make <te3003>.create name="my-container" volumes="ros-workspace" # with volume
+make te3003.create name="my-container" # no volume
+make te3003.create name="my-container" volumes="ros-workspace" # with volume
 ```
 Consider that docker commands on this container must be run manually, including exec, stop, and remove commands. Remember to include user on docker exec:
 ```bash
@@ -97,16 +117,18 @@ docker exec -it --user $(shell id -u):$(shell id -g) my-container bash
 ### Running alternate CUDA images
 CUDA images are available in different versions and types. Versions compatible may vary for your system and the docker Ubuntu version. For compatibility, only 11.8 and 12.1 are accepted, defaulting to 11.8. Image type can be set to "runtime" to include only capability to run CUDA compiled code, while "devel" and "cudnn" images allow for CUDA code compilation and cuDNN support, respectively. Check available images at the [NVIDIA CUDA Docker Hub](https://hub.docker.com/r/nvidia/cuda) and follow the prompt in [the run script](/docker/scripts/build.bash) to set the desired image.
 ```bash
-make <te3003>.build.cuda cuda-image="runtime" cuda-version="11.8" # Default
+make te3003.build.cuda cuda-image="runtime" cuda-version="11.8" # Default
 ```
 By default, Humble containers will default to image "runtime" and version "11.8" if no argument is given.
 
 ## Docker container settings
 The docker containers are set to use the host network and display, as well as devices such as the webcam. On the run scripts at docker/scripts, these settings may be edited. 
 
-# After every requirement is installed
-```bash
+# Installation for TE3003B class
+The necessary commands to run can be summarized as:
+```
 make te3003.build.cuda # remove cuda if necessary
 make te3003.create.cuda volumes="~/my_working_folder" # mount a folder you want to work on
+make te3003.up # start the container, should not be necessary after create but will be on system reboot
 make te3003.shell
 ```
