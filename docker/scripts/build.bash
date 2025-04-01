@@ -98,7 +98,7 @@ if [ "$ROS_DISTRO" == "te3003" ]; then
     BASE_IMAGE=$HUMBLE_IMAGE_NAME
     echo "Building humble image: $HUMBLE_IMAGE_NAME"
     docker build -t $HUMBLE_IMAGE_NAME \
-        -f $HUMBLE_DOCKER_FILE $PWD --build-arg USER_UID=$USER_UID --build-arg USER_GID=$USER_GID --build-arg CUDA_IMAGE=$CUDA_IMAGE
+        -f $HUMBLE_DOCKER_FILE $PWD --build-arg USER_UID=$USER_UID --build-arg USER_GID=$USER_GID --build-arg CUDA_IMAGE=$CUDA_IMAGE --progress=plain
 fi
 
 docker build -t $IMAGE_NAME \
