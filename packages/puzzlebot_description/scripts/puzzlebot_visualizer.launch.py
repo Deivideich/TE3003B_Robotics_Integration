@@ -17,7 +17,7 @@ def generate_launch_description():
     default_model_path = os.path.join(
         pkg_share, "urdf", "test.urdf"
     )
-    default_rviz_config_path = os.path.join(pkg_share, "rviz", "view_urdf.rviz")
+    default_rviz_config_path = os.path.join(pkg_share, "rviz", "visualizer.rviz")
 
     # Declare launch arguments
     args = []

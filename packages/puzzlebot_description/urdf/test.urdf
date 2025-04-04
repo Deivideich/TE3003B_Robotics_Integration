@@ -1,8 +1,29 @@
 <?xml version="1.0"?>
-<robot name="puzzlebot" xmlns:xacro="http://www.ros.org/wiki/xacro">
+<robot name="puzzlebot"
+    xmlns:xacro="http://www.ros.org/wiki/xacro">
 
-    <!-- Base Footprint -->
-    <link name="base_footprint"/>
+    <!-- Materials -->
+    <material name="White">
+        <color rgba="1 1 1 1"/>
+    </material>
+    <material name="Blue">
+        <color rgba="0 0 1 1"/>
+    </material>
+    <material name="Orange">
+        <color rgba="1 0.5 0 1"/>
+    </material>
+
+    <!-- Base Footprint (Body) -->
+    <link name="base_footprint">
+        <visual>
+            <origin xyz="0.052 0.0 0.10" rpy="1.57 0.0 0.0"/>
+            <geometry>
+                <mesh filename="package://puzzlebot_description/meshes/MCR2_puzzlebot_jetson_lidar_base.stl" scale="1.0 1.0 1.0"/>
+            </geometry>
+            <material name="White"/>
+        </visual>
+    </link>
+
     <joint name="base_link_joint" type="fixed">
         <parent link="base_footprint"/>
         <child link="base_link"/>
@@ -13,7 +34,16 @@
     <link name="base_link"/>
 
     <!-- Right Wheel -->
-    <link name="wheel_r_link"/>
+    <link name="wheel_r_link">
+        <visual>
+            <origin xyz="0.0 0.0 0.0" rpy="3.14 1.57 0"/>
+            <geometry>
+                <mesh filename="package://puzzlebot_description/meshes/MCR2_wheel.stl" scale="1.0 1.0 1.0"/>
+            </geometry>
+            <material name="Blue"/>
+        </visual>
+    </link>
+
     <joint name="wheel_r_joint" type="continuous">
         <parent link="base_link"/>
         <child link="wheel_r_link"/>
@@ -21,7 +51,16 @@
     </joint>
 
     <!-- Left Wheel -->
-    <link name="wheel_l_link"/>
+    <link name="wheel_l_link">
+        <visual>
+            <origin xyz="0.0 0.0 0.0" rpy="0 1.57 0"/>
+            <geometry>
+                <mesh filename="package://puzzlebot_description/meshes/MCR2_wheel.stl" scale="1.0 1.0 1.0"/>
+            </geometry>
+            <material name="Blue"/>
+        </visual>
+    </link>
+
     <joint name="wheel_l_joint" type="continuous">
         <parent link="base_link"/>
         <child link="wheel_l_link"/>
@@ -29,11 +68,20 @@
     </joint>
 
     <!-- Caster Wheel -->
-    <link name="caster_link"/>
+    <link name="caster_link">
+        <visual>
+            <geometry>
+                <mesh filename="package://puzzlebot_description/meshes/MCR2_caster_wheel.stl" scale="1.0 1.0 1.0"/>
+            </geometry>
+            <material name="Blue"/>
+        </visual>
+    </link>
+
     <joint name="caster_joint" type="fixed">
         <parent link="base_link"/>
         <child link="caster_link"/>
-        <origin xyz="-0.095 0 -0.03" rpy="0 0 0"/>
+        <origin xyz="0.175 0 -0.04" rpy="0 0 0"/>
     </joint>
+
 
 </robot>
