@@ -11,12 +11,9 @@ find_package(ament_cmake_python REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclpy REQUIRED)
 find_package(urdf_launch REQUIRED)
-find_package(xarm_description REQUIRED)
-
-ament_environment_hooks("hooks/resource_paths.dsv.in")
 
 #Install directories
-install(DIRECTORY urdf
+install(DIRECTORY urdf scripts
   DESTINATION share/${PROJECT_NAME})
 
 #Python compatability
