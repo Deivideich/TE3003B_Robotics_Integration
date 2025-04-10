@@ -4,6 +4,5 @@ FROM ${BASE_IMAGE}
 ENV DEBIAN_FRONTEND=noninteractive
 ARG CUDA_VERSION="11.8"
 
-RUN mkdir /tmp
 COPY docker/install_torch.sh /tmp/install_torch.sh
-RUN /tmp/install_torch.sh --cuda-version=${CUDA_VERSION}
+RUN chmod +x /tmp/install_torch.sh && ./tmp/install_torch.sh --cuda-version ${CUDA_VERSION}
