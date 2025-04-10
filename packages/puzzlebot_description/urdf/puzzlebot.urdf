@@ -195,12 +195,12 @@
       </ros>
     
             <!-- Wheel Information -->
-            <left_joint>wheel_l_joint</left_joint>
-            <right_joint>wheel_r_joint</right_joint>
+            <left_joint>wheel_r_joint</left_joint>
+            <right_joint>wheel_l_joint</right_joint>
             <wheel_separation>0.332</wheel_separation>
             <wheel_diameter>0.130</wheel_diameter>
+            <OdomSource>0</OdomSource>
     
-
             <!-- Limits -->
             <max_wheel_torque>109</max_wheel_torque>
             <max_wheel_acceleration>5.0</max_wheel_acceleration>
