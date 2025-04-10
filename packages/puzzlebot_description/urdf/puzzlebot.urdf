@@ -137,7 +137,7 @@
         <origin xyz="0 0 0" rpy="0 0 0"/>
     </joint>
 
-    <link name="laser_link"/>
+    <link name="laser_frame"/>
 
     <!-- <link name="laser_frame"/> -->
     <joint name="base_link_joint" type="fixed">
@@ -168,7 +168,7 @@
 
     <joint name="laser_joint" type="fixed">
         <parent link="base_link"/>
-        <child link="laser_link"/>
+        <child link="laser_frame"/>
         <origin xyz="0.05 0 0.11" rpy="0 0 0"/>
     </joint> 
 
@@ -225,7 +225,7 @@
     </plugin>
   </gazebo>
 
-    <gazebo reference="laser_link">
+    <gazebo reference="laser_frame">
         <sensor name="laser" type="ray">
             <pose> 0 0 0 0 0 0 </pose>
             <visualize>true</visualize>
