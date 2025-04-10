@@ -2,7 +2,6 @@
 <robot name="simple_robot"
     xmlns:xacro="http://ros.org/wiki/xacro">
 
-    <!-- Base Link -->
     <link name="base_link">
         <visual>
             <geometry>
@@ -23,7 +22,6 @@
         </inertial>
     </link>
 
-    <!-- Right Wheel -->
     <link name="wheel_r_link">
         <visual>
             <geometry>
@@ -44,8 +42,6 @@
         </inertial>
     </link>
 
-
-    <!-- Left Wheel -->
     <link name="wheel_l_link">
         <visual>
             <geometry>
@@ -84,7 +80,7 @@
         </inertial>
     </link>
 
-    <!-- <origin xyz="0.052 -0.095 -0.0025" rpy="0 0 1.57"/> -->
+    <link name="laser_frame"/>
 
     <joint name="wheel_l_joint" type="continuous">
         <parent link="base_link"/>
@@ -94,7 +90,6 @@
         <dynamics damping="0.5" friction="0.5"/>
     </joint>
 
-    <!-- Left Wheel -->
     <joint name="wheel_r_joint" type="continuous">
         <parent link="base_link"/>
         <child link="wheel_l_link"/>
@@ -103,13 +98,18 @@
         <dynamics damping="0.5" friction="0.5"/>
     </joint>
 
-    <!-- Caster Wheel -->
     <joint name="caster_joint" type="fixed">
         <parent link="base_link"/>
         <child link="caster_link"/>
         <origin xyz="0.15 -0.095 0" rpy="-1.57 0 0"/>
         <axis xyz="0 0 1"/>
         <dynamics damping="0.5" friction="0.5"/>
+    </joint>
+
+    <joint name="laser_joint" type="fixed">
+        <parent link="base_link"/>
+        <child link="laser_frame"/>
+        <origin xyz="0.122 0 0.212" rpy="0 0 0"/>
     </joint>
 
     <ros2_control name="GazeboSystem" type="system">
@@ -128,7 +128,6 @@
         </joint>
     </ros2_control>
 
-    <!-- Gazebo Diff Drive Plugin -->
     <gazebo>
         <plugin name="diff_drive_controller" filename="libgazebo_ros_diff_drive.so">
             <left_joint>wheel_l_joint</left_joint>
@@ -142,4 +141,35 @@
             <robot_base_frame>base_link</robot_base_frame>
         </plugin>
     </gazebo>
+
+    <gazebo reference="laser_frame">
+        <material>Gazebo/Black</material>
+
+        <sensor name="laser" type="ray">
+            <pose> 0 0 0 0 0 0 </pose>
+            <visualize>false</visualize>
+            <update_rate>10</update_rate>
+            <ray>
+                <scan>
+                    <horizontal>
+                        <samples>360</samples>
+                        <min_angle>-3.14</min_angle>
+                        <max_angle>3.14</max_angle>
+                    </horizontal>
+                </scan>
+                <range>
+                    <min>0.3</min>
+                    <max>12</max>
+                </range>
+            </ray>
+            <plugin name="laser_controller" filename="libgazebo_ros_ray_sensor.so">
+                <ros>
+                    <argument>~/out:=scan</argument>
+                </ros>
+                <output_type>sensor_msgs/LaserScan</output_type>
+                <frame_name>laser_frame</frame_name>
+            </plugin>
+        </sensor>
+    </gazebo>
+
 </robot>

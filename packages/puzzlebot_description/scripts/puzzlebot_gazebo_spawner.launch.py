@@ -16,6 +16,9 @@ def generate_launch_description():
     default_model_path = os.path.join(pkg_share, "urdf", "puzzlebot.urdf")
     default_rviz_config_path = os.path.join(pkg_share, "rviz", "visualizer.rviz")
 
+    # Add the path for the Gazebo model (adjust based on where the saved model files are)
+    gazebo_model_path = os.path.join(pkg_share, "models", "mcl_world")
+
     return LaunchDescription([
         # Launch arguments
         DeclareLaunchArgument(
@@ -58,7 +61,19 @@ def generate_launch_description():
             executable="spawn_entity.py",
             arguments=[
                 "-topic", "robot_description",
-                "-entity", "lidar_cube"
+                "-entity", "puzzlebot"
+            ],
+            output="screen"
+        ),
+
+        # Spawn Gazebo model (wall model)
+        Node(
+            package="gazebo_ros",
+            executable="spawn_entity.py",  # Using spawn_entity.py instead of spawn_model.py
+            arguments=[
+                "-file", os.path.join(gazebo_model_path, "model.sdf"),  # Replace with model.sdf path
+                "-entity", "wall_model",  # Correct entity name here
+                "-robot_namespace", "wall"
             ],
             output="screen"
         ),

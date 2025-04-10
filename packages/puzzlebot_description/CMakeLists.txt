@@ -13,7 +13,7 @@ find_package(rclpy REQUIRED)
 find_package(urdf_launch REQUIRED)
 
 #Install directories
-install(DIRECTORY urdf scripts meshes rviz
+install(DIRECTORY urdf scripts meshes rviz models
   DESTINATION share/${PROJECT_NAME})
 
 #Python compatability
