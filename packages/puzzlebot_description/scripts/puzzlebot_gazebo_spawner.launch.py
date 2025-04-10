@@ -1,6 +1,6 @@
 import os
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, TimerAction
 from launch.substitutions import Command, LaunchConfiguration, PathJoinSubstitution, FindExecutable
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node
@@ -39,6 +39,13 @@ def generate_launch_description():
                 ])
             ])
         ),
+        
+        Node(
+            package="joint_state_publisher",
+            executable="joint_state_publisher",
+            name="joint_state_publisher",
+            output="screen"
+        ),
 
         # State publisher
         Node(
@@ -55,15 +62,25 @@ def generate_launch_description():
             output="screen"
         ),
 
-        # Spawn robot in Gazebo
-        Node(
-            package="gazebo_ros",
-            executable="spawn_entity.py",
-            arguments=[
-                "-topic", "robot_description",
-                "-entity", "puzzlebot"
-            ],
-            output="screen"
+        TimerAction(
+            period=3.0,
+            actions=[
+                Node(
+                    package="gazebo_ros",
+                    executable="spawn_entity.py",
+                    arguments=[
+                        "-topic", "/robot_description",
+                        "-entity", "puzzlebot",
+                        "-x", "0.0",  # X position
+                        "-y", "0.0",  # Y position
+                        "-z", "0.2",  # Z position
+                        "-R", "0",    # Roll
+                        "-P", "0",    # Pitch
+                        "-Y", "0"     # Yaw
+                    ],
+                    output="screen"
+                )
+            ]
         ),
 
         # Spawn Gazebo model (wall model)
