@@ -2,6 +2,8 @@
 <robot name="simple_robot"
     xmlns:xacro="http://ros.org/wiki/xacro">
 
+    <link name="odom"/>
+
     <!-- Base Footprint (Body) -->
     <link name="base_link">
         <visual>
@@ -42,7 +44,6 @@
             <inertia ixx="0.0001" ixy="0.0" ixz="0.0" iyy="0.0001" iyz="0.0" izz="0.0001"/>
         </inertial>
     </link>
-
 
     <link name="wheel_r_link">
         <visual>
@@ -130,6 +131,12 @@
         </inertial>
     </link>
 
+    <joint name="odom_joint" type="fixed">
+        <parent link="odom"/>
+        <child link="base_footprint"/>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+    </joint>
+
     <link name="laser_link"/>
 
     <!-- <link name="laser_frame"/> -->
@@ -201,11 +208,11 @@
 
             <!-- Output -->
             <odometry_frame>odom</odometry_frame>
-            <robot_base_frame>base_link</robot_base_frame>
+            <robot_base_frame>base_footprint</robot_base_frame>
 
             <publish_odom>true</publish_odom>
-            <publish_odom_tf>false</publish_odom_tf>
-            <publish_wheel_tf>true</publish_wheel_tf>
+            <publish_odom_tf>true</publish_odom_tf>
+            <publish_wheel_tf>false</publish_wheel_tf>
     
     
         </plugin>
