@@ -1,5 +1,6 @@
 <?xml version="1.0"?>
-<robot name="simple_robot" xmlns:xacro="http://ros.org/wiki/xacro">
+<robot name="simple_robot"
+    xmlns:xacro="http://ros.org/wiki/xacro">
 
     <!-- Base Link -->
     <link name="base_link">
@@ -85,7 +86,7 @@
 
     <!-- <origin xyz="0.052 -0.095 -0.0025" rpy="0 0 1.57"/> -->
 
-    <joint name="wheel_r_joint" type="continuous">
+    <joint name="wheel_l_joint" type="continuous">
         <parent link="base_link"/>
         <child link="wheel_r_link"/>
         <origin xyz="0.0 -0.052 0.095" rpy="0 0 1.57"/>
@@ -94,7 +95,7 @@
     </joint>
 
     <!-- Left Wheel -->
-    <joint name="wheel_l_joint" type="continuous">
+    <joint name="wheel_r_joint" type="continuous">
         <parent link="base_link"/>
         <child link="wheel_l_link"/>
         <origin xyz="0.0 -0.052 -0.095" rpy="0 0 -1.57"/>
@@ -111,6 +112,34 @@
         <dynamics damping="0.5" friction="0.5"/>
     </joint>
 
+    <ros2_control name="GazeboSystem" type="system">
+        <hardware>
+            <plugin>gazebo_ros2_control/GazeboSystem</plugin>
+        </hardware>
 
+        <joint name="left_wheel_joint">
+            <command_interface name="velocity"/>
+            <state_interface name="velocity"/>
+        </joint>
 
+        <joint name="right_wheel_joint">
+            <command_interface name="velocity"/>
+            <state_interface name="velocity"/>
+        </joint>
+    </ros2_control>
+
+    <!-- Gazebo Diff Drive Plugin -->
+    <gazebo>
+        <plugin name="diff_drive_controller" filename="libgazebo_ros_diff_drive.so">
+            <left_joint>wheel_l_joint</left_joint>
+            <right_joint>wheel_r_joint</right_joint>
+            <wheel_separation>0.3</wheel_separation>
+            <wheel_radius>0.05</wheel_radius>
+            <wheel_diameter>0.1</wheel_diameter>
+            <publish_odom>true</publish_odom>
+            <odom_topic>odom</odom_topic>
+            <cmd_vel_topic>cmd_vel</cmd_vel_topic>
+            <robot_base_frame>base_link</robot_base_frame>
+        </plugin>
+    </gazebo>
 </robot>
