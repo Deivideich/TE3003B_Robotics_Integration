@@ -22,7 +22,7 @@
 
     <link name="base_footprint">
         <visual>
-            <origin xyz="0.052 0.0 0.10" rpy="1.57 0.0 0.0"/>
+            <origin xyz="0.052 0.0 0.10" rpy="1.57 0.0 3.1416"/>
             <geometry>
                 <mesh filename="file://$(find puzzlebot_description)/meshes/MCR2_puzzlebot_jetson_lidar_base.stl" scale="1.0 1.0 1.0"/>
             </geometry>
@@ -150,20 +150,20 @@
         <parent link="base_link"/>
         <child link="wheel_l_link"/>
         <origin xyz="0.052 0.095 -0.0025" rpy="0 0 1.57"/>
-        <axis xyz="-1 0 0"/> <!-- Inverted axis -->
+        <axis xyz="1 0 0"/> <!-- Inverted axis -->
     </joint>
 
     <joint name="wheel_r_joint" type="continuous">
         <parent link="base_link"/>
         <child link="wheel_r_link"/>
         <origin xyz="0.052 -0.095 -0.0025" rpy="0 0 1.57"/>
-        <axis xyz="-1 0 0"/> <!-- Inverted axis -->
+        <axis xyz="1 0 0"/> <!-- Inverted axis -->
     </joint>
 
     <joint name="caster_joint" type="fixed">
         <parent link="base_link"/>
         <child link="caster_link"/>
-        <origin xyz="0.175 0 -0.04" rpy="0 0 0"/>
+        <origin xyz="-0.175 0 -0.0425" rpy="0 0 0"/>
     </joint>
 
     <joint name="laser_joint" type="fixed">
@@ -195,8 +195,8 @@
       </ros>
     
             <!-- Wheel Information -->
-            <left_joint>wheel_r_joint</left_joint>
-            <right_joint>wheel_l_joint</right_joint>
+            <left_joint>wheel_l_joint</left_joint>
+            <right_joint>wheel_r_joint</right_joint>
             <wheel_separation>0.332</wheel_separation>
             <wheel_diameter>0.130</wheel_diameter>
             <OdomSource>0</OdomSource>
