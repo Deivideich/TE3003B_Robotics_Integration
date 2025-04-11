@@ -14,7 +14,7 @@ def generate_launch_description():
     # Paths
     pkg_share = FindPackageShare(pkg_name).find(pkg_name)
     default_model_path = os.path.join(pkg_share, "urdf", "puzzlebot.urdf")
-    default_rviz_config_path = os.path.join(pkg_share, "rviz", "visualizer.rviz")
+    default_rviz_config_path = os.path.join(pkg_share, "rviz", "nav2.rviz")
 
     # Add the path for the Gazebo model (adjust based on where the saved model files are)
     gazebo_model_path = os.path.join(pkg_share, "models", "mcl_world")
@@ -26,7 +26,7 @@ def generate_launch_description():
             description="Absolute path to robot urdf.xacro file"
         ),
         DeclareLaunchArgument(
-            name="rviz", default_value="false",
+            name="rviz", default_value="true",
             description="Launch RViz?"
         ),
 
