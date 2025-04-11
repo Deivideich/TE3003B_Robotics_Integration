@@ -13,8 +13,9 @@ def generate_launch_description():
 
     # Paths
     pkg_share = FindPackageShare(pkg_name).find(pkg_name)
-    default_model_path = os.path.join(pkg_share, "urdf", "puzzlebot.urdf")
-    default_rviz_config_path = os.path.join(pkg_share, "rviz", "visualizer.rviz")
+    default_model_path = os.path.join(pkg_share, "urdf", "puzzlebot_gazebo.urdf")
+    default_rviz_config_path = os.path.join(pkg_share, "rviz", "nav2.rviz")
+    nav_launch_path = os.path.join(pkg_share, "launch", "puzzlebot_nav_launch.py")
 
     # Add the path for the Gazebo model (adjust based on where the saved model files are)
     gazebo_model_path = os.path.join(pkg_share, "models", "mcl_world")
@@ -26,8 +27,12 @@ def generate_launch_description():
             description="Absolute path to robot urdf.xacro file"
         ),
         DeclareLaunchArgument(
-            name="rviz", default_value="false",
+            name="rviz", default_value="true",
             description="Launch RViz?"
+        ),
+        DeclareLaunchArgument(
+            name="nav", default_value="false",
+            description="Launch Navigation2 stack?"
         ),
 
         # Launch Gazebo
@@ -96,5 +101,33 @@ def generate_launch_description():
             name="rviz2",
             output="screen",
             arguments=["-d", default_rviz_config_path]
-        )
+        ),
+        
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource([
+                PathJoinSubstitution([
+                    FindPackageShare("slam_toolbox"),
+                    "launch",
+                    "online_async_launch.py"
+                ])
+            ]),
+            launch_arguments={
+                "use_sim_time": "true",
+                "params_file": os.path.join(
+                    pkg_share,
+                    "config",
+                    "mapping_params.yaml"
+                )
+            }.items()
+        ),
+        
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(nav_launch_path),
+            condition=IfCondition(LaunchConfiguration("nav")),
+            launch_arguments={
+                "use_sim_time": "true",
+                "autostart": "true",
+                "params_file": os.path.join(pkg_share, "config", "nav_params.yaml")
+            }.items()
+        ),
     ])
