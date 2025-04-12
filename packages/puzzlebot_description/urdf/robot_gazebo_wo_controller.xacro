@@ -1,0 +1,13 @@
+<?xml version="1.0"?>
+<robot name="puzzlebot"
+  xmlns:xacro="http://ros.org/wiki/xacro">
+
+  <!-- Include the puzzlebot modular description -->
+  <xacro:include filename="$(find puzzlebot_description)/urdf/puzzlebot.xacro"/>
+  <xacro:include filename="$(find puzzlebot_description)/urdf/gazebo_tags.xacro"/>
+
+  <!-- Instantiate the macro with optional prefix -->
+  <xacro:puzzlebot_description prefix=""/>
+
+
+</robot>

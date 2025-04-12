@@ -1,0 +1,99 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://ros.org/wiki/xacro">
+
+  <xacro:macro name="gazebo_tags" params="use_gazebo_controllers:=false">
+
+    <!-- Conditionally include ros2_control configuration and diff_drive plugin -->
+    <xacro:if value="${use_gazebo_controllers}">
+      <!-- ros2_control Configuration -->
+      <ros2_control name="GazeboSystem" type="system">
+        <hardware>
+          <plugin>gazebo_ros2_control/GazeboSystem</plugin>
+        </hardware>
+
+        <!-- Joint Configuration -->
+        <joint name="wheel_l_joint">
+          <command_interface name="velocity"/>
+          <state_interface name="velocity"/>
+        </joint>
+
+        <joint name="wheel_r_joint">
+          <command_interface name="velocity"/>
+          <state_interface name="velocity"/>
+        </joint>
+      </ros2_control>
+
+      <!-- Gazebo Plugin: Differential Drive -->
+      <gazebo>
+        <plugin name="diff_drive" filename="libgazebo_ros_diff_drive.so">
+          <ros>
+            <remapping>odom:=/puzzlebot_odom</remapping>
+          </ros>
+
+          <!-- Wheel Information -->
+          <left_joint>wheel_l_joint</left_joint>
+          <right_joint>wheel_r_joint</right_joint>
+          <wheel_separation>0.332</wheel_separation>
+          <wheel_diameter>0.130</wheel_diameter>
+          <OdomSource>0</OdomSource>
+
+          <!-- Limits -->
+          <max_wheel_torque>109</max_wheel_torque>
+          <max_wheel_acceleration>5.0</max_wheel_acceleration>
+
+          <!-- Output -->
+          <odometry_frame>odom</odometry_frame>
+          <robot_base_frame>base_footprint</robot_base_frame>
+          <publish_odom>true</publish_odom>
+          <publish_odom_tf>true</publish_odom_tf>
+          <publish_wheel_tf>false</publish_wheel_tf>
+        </plugin>
+      </gazebo>
+    </xacro:if>
+
+    <!-- Joint State Publisher is always included (or make this conditional instead if needed) -->
+    <gazebo>
+      <plugin name="gazebo_ros_joint_state_publisher" filename="libgazebo_ros_joint_state_publisher.so">
+        <joint_name>wheel_l_joint</joint_name>
+        <joint_name>wheel_r_joint</joint_name>
+      </plugin>
+    </gazebo>
+
+    <!-- Gazebo Sensor: Laser -->
+    <gazebo reference="laser_frame">
+      <sensor name="laser" type="ray">
+        <pose>0 0 0 0 0 0</pose>
+        <visualize>true</visualize>
+        <update_rate>10</update_rate>
+
+        <ray>
+          <scan>
+            <horizontal>
+              <samples>360</samples>
+              <min_angle>-3.14</min_angle>
+              <max_angle>3.14</max_angle>
+            </horizontal>
+          </scan>
+          <range>
+            <min>0.3</min>
+            <max>12</max>
+          </range>
+        </ray>
+
+        <plugin name="laser_controller" filename="libgazebo_ros_ray_sensor.so">
+          <ros>
+            <argument>~/out:=scan</argument>
+          </ros>
+          <output_type>sensor_msgs/LaserScan</output_type>
+          <frame_name>laser_frame</frame_name>
+        </plugin>
+      </sensor>
+    </gazebo>
+
+    <!-- Gazebo Material: Base Footprint -->
+    <gazebo reference="base_footprint">
+      <material>Gazebo/Black</material>
+    </gazebo>
+
+  </xacro:macro>
+</robot>

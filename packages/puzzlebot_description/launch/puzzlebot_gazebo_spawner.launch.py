@@ -6,6 +6,7 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 from launch.conditions import IfCondition
+from launch_ros.parameter_descriptions import ParameterValue
 
 
 def generate_launch_description():
@@ -13,7 +14,7 @@ def generate_launch_description():
 
     # Paths
     pkg_share = FindPackageShare(pkg_name).find(pkg_name)
-    default_model_path = os.path.join(pkg_share, "urdf", "puzzlebot_gazebo.urdf")
+    default_model_path = os.path.join(pkg_share, "urdf", "robot_gazebo.xacro")
     default_rviz_config_path = os.path.join(pkg_share, "rviz", "visualizer.rviz")
 
     # Add the path for the Gazebo model (adjust based on where the saved model files are)
@@ -28,6 +29,14 @@ def generate_launch_description():
         DeclareLaunchArgument(
             name="rviz", default_value="false",
             description="Launch RViz?"
+        ),
+        DeclareLaunchArgument(
+            name="prefix", default_value="",
+            description="Prefix for robot link/joint names"
+        ),
+        DeclareLaunchArgument(
+            name="use_gazebo_controllers", default_value="true",
+            description="Whether to include Gazebo controllers"
         ),
 
         # Launch Gazebo
@@ -46,11 +55,15 @@ def generate_launch_description():
             executable="robot_state_publisher",
             name="robot_state_publisher",
             parameters=[{
-                "robot_description": Command([
-                    FindExecutable(name="xacro"),
-                    " ",
-                    LaunchConfiguration("model")
-                ])
+                "robot_description": ParameterValue(
+                    Command([
+                        FindExecutable(name="xacro"), " ",
+                        LaunchConfiguration("model"), " ",
+                        "prefix:=", LaunchConfiguration("prefix"), " ",
+                        "use_gazebo_controllers:=", LaunchConfiguration("use_gazebo_controllers")
+                    ]),
+                    value_type=str
+                )
             }],
             output="screen"
         ),
