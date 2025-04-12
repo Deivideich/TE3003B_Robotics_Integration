@@ -101,6 +101,13 @@ def generate_launch_description():
         output="screen",
     )
 
+    wheel_tf_broadcaster_node = launch_ros.actions.Node(
+        package="puzzlebot_description",
+        executable="wheel_transform_broadcaster.py",
+        name="wheel_transform_broadcaster",
+        output="screen",
+    )
+
 
     # Add all nodes to the launch description
     nodes = [
@@ -110,6 +117,7 @@ def generate_launch_description():
         differential_ik_node,
         differential_dk_node,
         transforms_node,
+        wheel_tf_broadcaster_node,
     ]
 
     return launch.LaunchDescription(args + nodes)
