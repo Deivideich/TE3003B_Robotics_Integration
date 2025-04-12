@@ -75,11 +75,16 @@ Visualization Manager:
           Alpha: 1
           Show Axes: false
           Show Trail: false
+          Value: true
         caster_link:
           Alpha: 1
           Show Axes: false
           Show Trail: false
           Value: true
+        laser_frame:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
         wheel_l_link:
           Alpha: 1
           Show Axes: false
@@ -109,9 +114,9 @@ Visualization Manager:
           Value: true
         caster_link:
           Value: true
-        wheel_l_link:
+        laser_frame:
           Value: true
-        wheel_r_link:
+        odom:
           Value: true
       Marker Scale: 1
       Name: TF
@@ -119,20 +124,19 @@ Visualization Manager:
       Show Axes: true
       Show Names: false
       Tree:
-        base_footprint:
-          base_link:
-            caster_link:
-              {}
-            wheel_l_link:
-              {}
-            wheel_r_link:
-              {}
+        odom:
+          base_footprint:
+            base_link:
+              caster_link:
+                {}
+              laser_frame:
+                {}
       Update Interval: 0
       Value: true
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48
-    Fixed Frame: base_link
+    Fixed Frame: odom
     Frame Rate: 30
   Name: root
   Tools:
@@ -175,7 +179,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 0.6877118945121765
+      Distance: 5.855103969573975
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -190,10 +194,10 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.34539851546287537
+      Pitch: 0.97039794921875
       Target Frame: <Fixed Frame>
       Value: Orbit (rviz)
-      Yaw: 4.168545722961426
+      Yaw: 3.943540573120117
     Saved: ~
 Window Geometry:
   Displays:
