@@ -32,7 +32,7 @@ class DeadReckoning(Node):
         )
 
         # Publisher for estimated pose
-        self.pose_pub = self.create_publisher(PoseStamped, '/dead_reckon', 10)
+        self.pose_pub = self.create_publisher(PoseStamped, '/odom', 10)
 
     def wheel_callback(self, msg):
         current_time = self.get_clock().now().seconds_nanoseconds()

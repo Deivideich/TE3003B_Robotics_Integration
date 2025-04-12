@@ -15,7 +15,7 @@ class DeadReckonSubscriber(Node):
         super().__init__('dead_reckon_subscriber')
         self.subscription = self.create_subscription(
             PoseStamped,
-            '/dead_reckon',
+            '/odom',
             self.listener_callback,
             10)
         self.tf_broadcaster = TransformBroadcaster(self)

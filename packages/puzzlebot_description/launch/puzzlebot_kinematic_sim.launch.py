@@ -78,12 +78,38 @@ def generate_launch_description():
         output="screen",
         arguments=["-d", LaunchConfiguration("rvizconfig")],
     )
+    
+        # Custom puzzlebot nodes
+    differential_ik_node = launch_ros.actions.Node(
+        package="puzzlebot_description",
+        executable="differential_inverse_kinematics.py",
+        name="differential_inverse_kinematics",
+        output="screen",
+    )
+
+    differential_dk_node = launch_ros.actions.Node(
+        package="puzzlebot_description",
+        executable="differential_direct_kinematics.py",
+        name="differential_direct_kinematics",
+        output="screen",
+    )
+
+    transforms_node = launch_ros.actions.Node(
+        package="puzzlebot_description",
+        executable="puzzlebot_transforms.py",
+        name="puzzlebot_transforms",
+        output="screen",
+    )
+
 
     # Add all nodes to the launch description
     nodes = [
         robot_state_publisher_node,
         rviz_node,
         joint_state_publisher_node,  # Only launches if 'use_gui' is true
+        differential_ik_node,
+        differential_dk_node,
+        transforms_node,
     ]
 
     return launch.LaunchDescription(args + nodes)
