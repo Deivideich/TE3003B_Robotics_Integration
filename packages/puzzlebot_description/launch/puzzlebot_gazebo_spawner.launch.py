@@ -14,7 +14,7 @@ def generate_launch_description():
 
     # Paths
     pkg_share = FindPackageShare(pkg_name).find(pkg_name)
-    default_model_path = os.path.join(pkg_share, "urdf", "robot_gazebo.xacro")
+    default_model_path = os.path.join(pkg_share, "urdf", "robot.xacro")
     default_rviz_config_path = os.path.join(pkg_share, "rviz", "visualizer.rviz")
 
     # Add the path for the Gazebo model (adjust based on where the saved model files are)
