@@ -5,6 +5,15 @@
 
     <!-- Conditionally include ros2_control configuration and diff_drive plugin -->
     <xacro:if value="${use_gazebo_controllers}">
+
+      <link name="odom"/>
+
+      <joint name="odom_joint" type="fixed">
+        <parent link="odom"/>
+        <child link="base_footprint"/>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+      </joint>
+
       <!-- ros2_control Configuration -->
       <ros2_control name="GazeboSystem" type="system">
         <hardware>

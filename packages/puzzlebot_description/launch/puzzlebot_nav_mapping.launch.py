@@ -13,13 +13,11 @@ def generate_launch_description():
 
     # Paths
     pkg_share = FindPackageShare(pkg_name).find(pkg_name)
-    default_model_path = os.path.join(pkg_share, "urdf", "puzzlebot_gazebo.urdf")
+    default_model_path = os.path.join(pkg_share, "urdf", "robot.xacro")
     default_rviz_config_path = os.path.join(pkg_share, "rviz", "nav2.rviz")
     nav_launch_path = os.path.join(pkg_share, "launch", "puzzlebot_nav_launch.py")
-
-    # Add the path for the Gazebo model (adjust based on where the saved model files are)
-    gazebo_model_path = os.path.join(pkg_share, "models", "mcl_world")
-
+    gazebo_spawner_launch_path = os.path.join(pkg_share, "launch", "puzzlebot_gazebo_spawner.launch.py")
+    
     return LaunchDescription([
         # Launch arguments
         DeclareLaunchArgument(
@@ -27,75 +25,48 @@ def generate_launch_description():
             description="Absolute path to robot urdf.xacro file"
         ),
         DeclareLaunchArgument(
-            name="rviz", default_value="true",
+            name="rviz_nav", default_value="true",
             description="Launch RViz?"
         ),
+        
+        DeclareLaunchArgument(
+            name="rviz_tf", default_value="false",
+            description="Launch RViz with TF?"
+        ),
+            
         DeclareLaunchArgument(
             name="nav", default_value="false",
             description="Launch Navigation2 stack?"
         ),
+        DeclareLaunchArgument(
+            name="mapping", default_value="false",
+            description="Launch Mapping process?"
+        ),
+        DeclareLaunchArgument(
+            name="gazebo_model_file", default_value=os.path.join(pkg_share, "models", "mcl_world", "model.sdf"),
+            description="Path to the Gazebo model file"
+        ),
+        DeclareLaunchArgument(
+            name="spawn_entity_name", default_value="puzzlebot",
+            description="Name for the entity in Gazebo"
+        ),
 
-        # Launch Gazebo
+        # Include the Gazebo spawner launch file unconditionally with arguments
         IncludeLaunchDescription(
-            PythonLaunchDescriptionSource([
-                PathJoinSubstitution([
-                    FindPackageShare("gazebo_ros"),
-                    "launch", "gazebo.launch.py"
-                ])
-            ])
-        ),
-    
-        # State publisher
-        Node(
-            package="robot_state_publisher",
-            executable="robot_state_publisher",
-            name="robot_state_publisher",
-            parameters=[{
-                "robot_description": Command([
-                    FindExecutable(name="xacro"),
-                    " ",
-                    LaunchConfiguration("model")
-                ])
-            }],
-            output="screen"
-        ),
-
-        TimerAction(
-            period=3.0,
-            actions=[
-                Node(
-                    package="gazebo_ros",
-                    executable="spawn_entity.py",
-                    arguments=[
-                        "-topic", "/robot_description",
-                        "-entity", "puzzlebot",
-                        "-x", "0.0",  # X position
-                        "-y", "0.0",  # Y position
-                        "-z", "0.2",  # Z position
-                        "-R", "0",    # Roll
-                        "-P", "0",    # Pitch
-                        "-Y", "0"     # Yaw
-                    ],
-                    output="screen"
-                )
-            ]
-        ),
-
-        # Spawn Gazebo model (wall model)
-        Node(
-            package="gazebo_ros",
-            executable="spawn_entity.py",  # Using spawn_entity.py instead of spawn_model.py
-            arguments=[
-                "-file", os.path.join(gazebo_model_path, "model.sdf"),  # Replace with model.sdf path
-                "-entity", "wall_model",  # Correct entity name here
-                "-robot_namespace", "wall"
-            ],
-            output="screen"
+            PythonLaunchDescriptionSource(gazebo_spawner_launch_path),
+            launch_arguments={
+                "model": LaunchConfiguration("model"),
+                "rviz": LaunchConfiguration("rviz_tf"),
+                "prefix": "",
+                "use_gazebo_controllers": "true",
+                "gazebo_model_file": LaunchConfiguration("gazebo_model_file"),
+                "spawn_entity_name": LaunchConfiguration("spawn_entity_name"),
+            }.items()
         ),
 
         # Optional RViz launch
         Node(
-            condition=IfCondition(LaunchConfiguration("rviz")),
+            condition=IfCondition(LaunchConfiguration("rviz_nav")),
             package="rviz2",
             executable="rviz2",
             name="rviz2",
@@ -103,6 +74,7 @@ def generate_launch_description():
             arguments=["-d", default_rviz_config_path]
         ),
         
+        # Include Mapping Launch (slam_toolbox)
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource([
                 PathJoinSubstitution([
@@ -121,6 +93,7 @@ def generate_launch_description():
             }.items()
         ),
         
+        # Include Navigation Launch
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(nav_launch_path),
             condition=IfCondition(LaunchConfiguration("nav")),

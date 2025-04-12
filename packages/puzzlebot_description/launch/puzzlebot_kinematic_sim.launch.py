@@ -15,7 +15,7 @@ def generate_launch_description():
         package="puzzlebot_description"
     ).find("puzzlebot_description")
     default_model_path = os.path.join(
-        pkg_share, "urdf", "puzzlebot_gazebo.urdf"
+        pkg_share, "urdf", "robot.xacro"
     )
     default_rviz_config_path = os.path.join(pkg_share, "rviz", "visualizer.rviz")
 

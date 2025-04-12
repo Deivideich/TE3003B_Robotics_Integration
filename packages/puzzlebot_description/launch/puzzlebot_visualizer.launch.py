@@ -6,6 +6,7 @@ from launch.substitutions import (
     PathJoinSubstitution,
 )
 import launch_ros.actions
+from launch.actions import DeclareLaunchArgument
 import os
 
 
@@ -40,6 +41,20 @@ def generate_launch_description():
             name="use_gui",
             default_value="false",  # Default to false
             description="Flag to enable/disable the joint_state_publisher_gui",
+        )
+    )
+    args.append(
+        launch.actions.DeclareLaunchArgument(
+            name="prefix",
+            default_value="",
+            description="Prefix for robot link/joint names",
+        )
+    )
+    args.append(
+        launch.actions.DeclareLaunchArgument(
+            name="use_gazebo_controllers",
+            default_value="false",
+            description="Whether to include Gazebo controllers",
         )
     )
 
