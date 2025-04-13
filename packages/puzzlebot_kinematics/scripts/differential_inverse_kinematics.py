@@ -10,8 +10,8 @@ class VelocityConverter(Node):
         super().__init__('velocity_converter')
 
         # Robot parameters
-        self.wheel_radius = 0.065  # meters
-        self.wheel_base = 0.332    # meters (distance between wheels)
+        self.wheel_radius = 0.05  # meters
+        self.wheel_base = 0.19    # meters (distance between wheels)
 
         # Initial velocities
         self.linear_velocity = 0.0

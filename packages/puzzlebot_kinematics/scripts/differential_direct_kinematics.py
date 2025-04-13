@@ -11,8 +11,8 @@ class DeadReckoning(Node):
         super().__init__('dead_reckoning')
 
         # Robot parameters
-        self.wheel_radius = 0.065  # meters
-        self.wheel_base = 0.332    # meters
+        self.wheel_radius = 0.05  # meters
+        self.wheel_base = 0.19    # meters
 
         # Robot state (x, y, theta)
         self.x = 0.0
