@@ -9,14 +9,15 @@ from launch.conditions import IfCondition
 
 
 def generate_launch_description():
-    pkg_name = "puzzlebot_description"
-
+    pkg_urdf_name = "puzzlebot_description"
+    pkg_kinematics_name = "puzzlebot_kinematics"
     # Paths
-    pkg_share = FindPackageShare(pkg_name).find(pkg_name)
-    default_model_path = os.path.join(pkg_share, "urdf", "robot.xacro")
-    default_rviz_config_path = os.path.join(pkg_share, "rviz", "nav2.rviz")
-    nav_launch_path = os.path.join(pkg_share, "launch", "puzzlebot_nav_launch.py")
-    gazebo_spawner_launch_path = os.path.join(pkg_share, "launch", "puzzlebot_gazebo_spawner.launch.py")
+    pkg_kinematics_share = FindPackageShare(pkg_kinematics_name).find(pkg_kinematics_name)
+    pkg_urdf_share = FindPackageShare(pkg_urdf_name).find(pkg_urdf_name)
+    default_model_path = os.path.join(pkg_urdf_share, "urdf", "robot.xacro")
+    default_rviz_config_path = os.path.join(pkg_kinematics_share, "rviz", "nav2.rviz")
+    nav_launch_path = os.path.join(pkg_kinematics_share, "launch", "puzzlebot_nav_launch.py")
+    gazebo_spawner_launch_path = os.path.join(pkg_kinematics_share, "launch", "puzzlebot_gazebo_spawner.launch.py")
     
     return LaunchDescription([
         # Launch arguments
@@ -43,7 +44,7 @@ def generate_launch_description():
             description="Launch Mapping process?"
         ),
         DeclareLaunchArgument(
-            name="gazebo_model_file", default_value=os.path.join(pkg_share, "models", "mcl_world", "model.sdf"),
+            name="gazebo_model_file", default_value=os.path.join(pkg_urdf_share, "models", "mcl_world", "model.sdf"),
             description="Path to the Gazebo model file"
         ),
         DeclareLaunchArgument(
@@ -86,7 +87,7 @@ def generate_launch_description():
             launch_arguments={
                 "use_sim_time": "true",
                 "params_file": os.path.join(
-                    pkg_share,
+                    pkg_kinematics_share,
                     "config",
                     "mapping_params.yaml"
                 )
@@ -100,7 +101,7 @@ def generate_launch_description():
             launch_arguments={
                 "use_sim_time": "true",
                 "autostart": "true",
-                "params_file": os.path.join(pkg_share, "config", "nav_params.yaml")
+                "params_file": os.path.join(pkg_kinematics_share, "config", "nav_params.yaml")
             }.items()
         ),
     ])

@@ -10,15 +10,16 @@ from launch_ros.parameter_descriptions import ParameterValue
 
 
 def generate_launch_description():
-    pkg_name = "puzzlebot_description"
-
+    pkg_urdf_name = "puzzlebot_description"
+    pkg_kinematics_name = "puzzlebot_kinematics"
     # Paths
-    pkg_share = FindPackageShare(pkg_name).find(pkg_name)
-    default_model_path = os.path.join(pkg_share, "urdf", "robot.xacro")
-    default_rviz_config_path = os.path.join(pkg_share, "rviz", "visualizer.rviz")
+    pkg__kinematics_share = FindPackageShare(pkg_kinematics_name).find(pkg_kinematics_name)
+    pkg_urdf_share = FindPackageShare(pkg_urdf_name).find(pkg_urdf_name)
+    default_model_path = os.path.join(pkg_urdf_share, "urdf", "robot.xacro")
+    default_rviz_config_path = os.path.join(pkg__kinematics_share, "rviz", "visualizer.rviz")
 
     # Add the path for the Gazebo model (adjust based on where the saved model files are)
-    gazebo_model_path = os.path.join(pkg_share, "models", "mcl_world")
+    gazebo_model_path = os.path.join(pkg_urdf_share, "models", "mcl_world")
 
     return LaunchDescription([
         # Launch arguments
@@ -35,7 +36,7 @@ def generate_launch_description():
             description="Prefix for robot link/joint names"
         ),
         DeclareLaunchArgument(
-            name="use_gazebo_controllers", default_value="true",
+            name="use_gazebo_controllers", default_value="false",
             description="Whether to include Gazebo controllers"
         ),
 
