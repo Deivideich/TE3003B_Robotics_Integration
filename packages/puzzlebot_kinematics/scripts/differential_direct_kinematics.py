@@ -3,6 +3,8 @@ import rclpy
 from rclpy.node import Node
 from std_msgs.msg import Float64MultiArray
 from geometry_msgs.msg import PoseStamped
+from nav_msgs.msg import Odometry
+from tf2_ros import TransformBroadcaster, TransformStamped
 import math
 import time
 
@@ -32,7 +34,9 @@ class DeadReckoning(Node):
         )
 
         # Publisher for estimated pose
-        self.pose_pub = self.create_publisher(PoseStamped, '/odom', 10)
+        self.odom_pub = self.create_publisher(Odometry, '/odom', 10)
+        self.tf_broadcaster = TransformBroadcaster(self)
+
 
     def wheel_callback(self, msg):
         current_time = self.get_clock().now().seconds_nanoseconds()
@@ -44,8 +48,8 @@ class DeadReckoning(Node):
             self.get_logger().warn("Received less than 2 wheel velocities!")
             return
 
-        omega_l = msg.data[0]  # rad/s
-        omega_r = msg.data[1]  # rad/s
+        omega_l = msg.data[0]
+        omega_r = msg.data[1]
 
         # Direct kinematics
         v = self.wheel_radius * (omega_r + omega_l) / 2
@@ -55,25 +59,45 @@ class DeadReckoning(Node):
         self.x += v * math.cos(self.theta) * dt
         self.y += v * math.sin(self.theta) * dt
         self.theta += w * dt
-
-        # Normalize theta to [-pi, pi]
         self.theta = (self.theta + math.pi) % (2 * math.pi) - math.pi
 
-        # Publish pose
-        pose = PoseStamped()
-        pose.header.stamp = self.get_clock().now().to_msg()
-        pose.header.frame_id = 'odom'
-        pose.pose.position.x = self.x
-        pose.pose.position.y = self.y
-        pose.pose.position.z = 0.0
-
-        # Convert theta (yaw) to quaternion
+        # Convert yaw to quaternion
         qz = math.sin(self.theta / 2.0)
         qw = math.cos(self.theta / 2.0)
-        pose.pose.orientation.z = qz
-        pose.pose.orientation.w = qw
 
-        self.pose_pub.publish(pose)
+        # Create Odometry message
+        odom = Odometry()
+        odom.header.stamp = self.get_clock().now().to_msg()
+        odom.header.frame_id = 'odom'
+        odom.child_frame_id = 'base_footprint'
+
+        odom.pose.pose.position.x = self.x
+        odom.pose.pose.position.y = self.y
+        odom.pose.pose.position.z = 0.0
+        odom.pose.pose.orientation.z = qz
+        odom.pose.pose.orientation.w = qw
+
+        # Zero covariance
+        odom.pose.covariance = [0.0] * 36
+        odom.twist.covariance = [0.0] * 36
+
+        odom.twist.twist.linear.x = v
+        odom.twist.twist.angular.z = w
+
+        self.odom_pub.publish(odom)
+        
+        t = TransformStamped()
+        t.header.stamp = self.get_clock().now().to_msg()
+        t.header.frame_id = 'odom'
+        t.child_frame_id = 'base_footprint'
+
+        t.transform.translation.x = self.x
+        t.transform.translation.y = self.y
+        t.transform.translation.z = 0.0
+        t.transform.rotation.z = qz
+        t.transform.rotation.w = qw
+
+        self.tf_broadcaster.sendTransform(t)
 
 
 def main(args=None):
