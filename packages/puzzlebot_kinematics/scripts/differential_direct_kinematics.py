@@ -98,6 +98,7 @@ class DeadReckoning(Node):
         t.transform.rotation.w = qw
 
         self.tf_broadcaster.sendTransform(t)
+        self.get_logger().info(f'Pose: x={self.x:.2f}, y={self.y:.2f}, theta={self.theta:.2f}')
 
 
 def main(args=None):
