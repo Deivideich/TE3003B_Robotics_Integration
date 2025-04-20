@@ -8,13 +8,13 @@ from geometry_msgs.msg import TransformStamped
 import tf_transformations
 from tf2_ros import Buffer, TransformListener
 from rclpy.duration import Duration
-
+from nav2_msgs.msg import Odometry
 
 class DeadReckonSubscriber(Node):
     def __init__(self):
         super().__init__('dead_reckon_subscriber')
         self.subscription = self.create_subscription(
-            PoseStamped,
+            Odometry,
             '/odom',
             self.listener_callback,
             10)

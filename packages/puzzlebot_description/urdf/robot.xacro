@@ -5,6 +5,7 @@
   <xacro:arg name="prefix" default=""/>
   <xacro:arg name="use_gazebo" default="true"/>
   <xacro:arg name="use_gazebo_controllers" default="true"/>
+  <xacro:arg name="use_gazebo_odom" default="false"/>
 
   <!-- Include macros -->
   <xacro:include filename="$(find puzzlebot_description)/urdf/puzzlebot.xacro"/>

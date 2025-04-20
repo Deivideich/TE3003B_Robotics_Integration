@@ -39,6 +39,10 @@ def generate_launch_description():
             name="use_gazebo_controllers", default_value="false",
             description="Whether to include Gazebo controllers"
         ),
+        DeclareLaunchArgument(
+            name="use_gazebo_odom", default_value="false",
+            description="Whether to include Gazebo odometry"
+        ),
 
         # Launch Gazebo
         IncludeLaunchDescription(
