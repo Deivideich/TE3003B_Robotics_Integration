@@ -13,5 +13,7 @@
 
   <!-- Call macros with args -->
   <xacro:puzzlebot_description prefix="$(arg prefix)"/>
-  <xacro:gazebo_tags use_gazebo_controllers="$(arg use_gazebo_controllers)"/>
+  <xacro:gazebo_tags 
+      use_gazebo_controllers="$(arg use_gazebo_controllers)" 
+      use_gazebo_odom="$(arg use_gazebo_odom)"/>
 </robot>

@@ -65,7 +65,10 @@ def generate_launch_description():
                         FindExecutable(name="xacro"), " ",
                         LaunchConfiguration("model"), " ",
                         "prefix:=", LaunchConfiguration("prefix"), " ",
-                        "use_gazebo_controllers:=", LaunchConfiguration("use_gazebo_controllers")
+                        "use_gazebo_controllers:=", LaunchConfiguration("use_gazebo_controllers"),
+                        " ",
+                        "use_gazebo_odom:=", LaunchConfiguration("use_gazebo_odom"),
+                        " ",
                     ]),
                     value_type=str
                 )
