@@ -21,7 +21,7 @@ class MCLNode(Node):
         self.create_subscription(OccupancyGrid, '/map', self.map_callback, 10)
         self.create_subscription(LaserScan, '/scan', self.scan_callback, 10)
         self.create_subscription(Odometry, '/odom', self.odom_callback, 10)
-        self.create_subscription(Odometry, '/odom', self.odom_callback, 10)
+        
         self.pose_pub = self.create_publisher(PoseWithCovarianceStamped, 'mcl_pose', 10)
 
         self.num_particles = 500
@@ -30,7 +30,7 @@ class MCLNode(Node):
         
         self.tf_buffer = tf2_ros.Buffer()
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
-
+        self.particle_weights = np.zeros(self.num_particles)
         self.last_odom = None
         self.map = None
         self.last_scan = None
