@@ -160,8 +160,8 @@ def generate_launch_description():
         
         Node(
             package="puzzlebot_navigation",
-            executable="monte_carlo_localisation_broken.py",
-            name="monte_carlo_localisation_broken",
+            executable="monte_carlo_localisation.py",
+            name="monte_carlo_localisation",
             output="screen",
         ),
         
