@@ -24,7 +24,7 @@ class MCLNode(Node):
         
         self.pose_pub = self.create_publisher(PoseWithCovarianceStamped, 'mcl_pose', 10)
 
-        self.num_particles = 500
+        self.num_particles = 100
         self.particles = []
         self.particles_pub = self.create_publisher(PoseArray, 'particle_cloud', 10)
         
@@ -222,10 +222,12 @@ class MCLNode(Node):
 
         if hasattr(self, 'delta_motion'):
             self.motion_update(self.delta_motion)
+            self.sensor_update()
+            self.resample_particles()  # ← Coming next!
 
-        self.sensor_update()
-        self.resample_particles()  # ← Coming next!
 
+            
+        
         self.publish_particles()
         self.broadcast_transform()
         self.publish_estimated_pose()
