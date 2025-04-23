@@ -7,13 +7,17 @@ import yaml
 import numpy as np
 from PIL import Image
 import os
+from ament_index_python.packages import get_package_share_directory
 
 class SimpleMapServer(Node):
     def __init__(self):
+        
         super().__init__('simple_map_server')
+        package_share_dir = get_package_share_directory('puzzlebot_navigation')
+        default_map_path = os.path.join(package_share_dir, 'maps', 'map_fixed.yaml')
+        self.declare_parameter('map_yaml_file', default_map_path)
 
         # Declare and get the map YAML path
-        self.declare_parameter('map_yaml_file', r'/home/deivideich/tec_mty/te3003_ws/src/TE3003B_Robotics_Integration/packages/puzzlebot_navigation/maps/map_fixed.yaml')
         yaml_path = self.get_parameter('map_yaml_file').get_parameter_value().string_value
 
         self.map_msg = self.load_map_from_yaml(yaml_path)
