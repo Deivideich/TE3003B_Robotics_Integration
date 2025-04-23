@@ -49,7 +49,7 @@ class VelocityConverter(Node):
         wheel_msg.data = [v_l, v_r]
         self.wheel_pub.publish(wheel_msg)
 
-        self.get_logger().info(f'Timer published wheel velocities -> Left: {v_l:.2f} rad/s, Right: {v_r:.2f} rad/s')
+        # self.get_logger().info(f'Timer published wheel velocities -> Left: {v_l:.2f} rad/s, Right: {v_r:.2f} rad/s')
 
 
 def main(args=None):

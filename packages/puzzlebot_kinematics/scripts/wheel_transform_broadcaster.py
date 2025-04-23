@@ -25,9 +25,9 @@ class FakeWheelPublisher(Node):
         self.joint_position_l += omega_l * dt
         self.joint_position_r += omega_r * dt
 
-        self.get_logger().info(
-            f"Wheel positions -> Left: {self.joint_position_l:.2f} rad, Right: {self.joint_position_r:.2f} rad"
-        )
+        # self.get_logger().info(
+        #     f"Wheel positions -> Left: {self.joint_position_l:.2f} rad, Right: {self.joint_position_r:.2f} rad"
+        # )
 
         joint_state_msg = JointState()
         joint_state_msg.header.stamp = self.get_clock().now().to_msg()

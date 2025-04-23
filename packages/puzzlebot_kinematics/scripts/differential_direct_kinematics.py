@@ -45,7 +45,7 @@ class DeadReckoning(Node):
         self.last_time = now
 
         if len(msg.data) < 2:
-            self.get_logger().warn("Received less than 2 wheel velocities!")
+            # self.get_logger().warn("Received less than 2 wheel velocities!")
             return
 
         omega_l = msg.data[0]
@@ -98,7 +98,7 @@ class DeadReckoning(Node):
         t.transform.rotation.w = qw
 
         self.tf_broadcaster.sendTransform(t)
-        self.get_logger().info(f'Pose: x={self.x:.2f}, y={self.y:.2f}, theta={self.theta:.2f}')
+        # self.get_logger().info(f'Pose: x={self.x:.2f}, y={self.y:.2f}, theta={self.theta:.2f}')
 
 
 def main(args=None):
