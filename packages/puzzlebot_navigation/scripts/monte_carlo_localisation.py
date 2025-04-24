@@ -182,11 +182,11 @@ class MCLNode(Node):
                     # If beam hits occupied space → higher weight
                     
                     if cell > 50:
-                        weight *= 1.5  # High weight for hitting obstacle
+                        weight *= 1.8  # High weight for hitting obstacle
                     elif cell == 0:
-                        weight *= 0.8  # Penalize for hitting free space
+                        weight *= 0.5  # Penalize for hitting free space
                     else:
-                        weight *= 0.5  # Unknown or out-of-bounds
+                        weight *= 0.1  # Unknown or out-of-bounds
 
                 else:
                     weight *= 0.1  # Out of bounds
@@ -224,11 +224,12 @@ class MCLNode(Node):
         if self.map is None or self.particles is None or len(self.particles) == 0:
             return
 
-        if hasattr(self, 'delta_motion') and (max(self.delta_motion[:2]) > 0.001 or abs(self.delta_motion[2]) > 0.01):
+        if hasattr(self, 'delta_motion') and ( math.sqrt(self.delta_motion[0]**2 + self.delta_motion[1]**2) > 0.001 or abs(self.delta_motion[2]) > 0.001):
             # Update particles based on odometry
             self.get_logger().info(f"UPDATING PARTICLES")
             self.motion_update(self.delta_motion)       
             self.sensor_update()
+
             neff = 1.0 / np.sum(np.square(self.particle_weights))
             if neff < self.num_particles / 2:
                 self.resample_particles()
@@ -280,8 +281,8 @@ class MCLNode(Node):
             "y": 0.01,
             "theta": 0.01
         }
-        alpha1 = 0.1  # noise related to translational motion
-        alpha2 = 0.05  # noise related to rotational motion 
+        alpha1 = 0.05  # noise related to translational motion
+        alpha2 = 0.01  # noise related to rotational motion 
         sigma_x = alpha1 * abs(dx) + alpha2 * abs(dtheta)
         sigma_y = alpha1 * abs(dy) + alpha2 * abs(dtheta)
         sigma_theta = alpha2 * abs(dtheta) + alpha1 * (abs(dx) + abs(dy))
