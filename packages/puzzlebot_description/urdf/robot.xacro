@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<robot name="puzzlebot"
+  xmlns:xacro="http://ros.org/wiki/xacro">
+  <!-- Declare arguments -->
+  <xacro:arg name="prefix" default=""/>
+  <xacro:arg name="use_gazebo" default="true"/>
+  <xacro:arg name="use_gazebo_controllers" default="true"/>
+  <xacro:arg name="use_gazebo_odom" default="false"/>
+
+  <!-- Include macros -->
+  <xacro:include filename="$(find puzzlebot_description)/urdf/puzzlebot.xacro"/>
+  <xacro:include filename="$(find puzzlebot_description)/urdf/gazebo_tags.xacro"/>
+
+  <!-- Call macros with args -->
+  <xacro:puzzlebot_description prefix="$(arg prefix)"/>
+  <xacro:gazebo_tags 
+      use_gazebo_controllers="$(arg use_gazebo_controllers)" 
+      use_gazebo_odom="$(arg use_gazebo_odom)"/>
+</robot>

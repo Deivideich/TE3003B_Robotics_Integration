@@ -6,18 +6,20 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 from launch.conditions import IfCondition
+from launch_ros.parameter_descriptions import ParameterValue
 
 
 def generate_launch_description():
-    pkg_name = "puzzlebot_description"
-
+    pkg_urdf_name = "puzzlebot_description"
+    pkg_kinematics_name = "puzzlebot_kinematics"
     # Paths
-    pkg_share = FindPackageShare(pkg_name).find(pkg_name)
-    default_model_path = os.path.join(pkg_share, "urdf", "puzzlebot.urdf")
-    default_rviz_config_path = os.path.join(pkg_share, "rviz", "visualizer.rviz")
+    pkg__kinematics_share = FindPackageShare(pkg_kinematics_name).find(pkg_kinematics_name)
+    pkg_urdf_share = FindPackageShare(pkg_urdf_name).find(pkg_urdf_name)
+    default_model_path = os.path.join(pkg_urdf_share, "urdf", "robot.xacro")
+    default_rviz_config_path = os.path.join(pkg__kinematics_share, "rviz", "visualizer.rviz")
 
     # Add the path for the Gazebo model (adjust based on where the saved model files are)
-    gazebo_model_path = os.path.join(pkg_share, "models", "mcl_world")
+    gazebo_model_path = os.path.join(pkg_urdf_share, "models", "mcl_world")
 
     return LaunchDescription([
         # Launch arguments
@@ -28,6 +30,18 @@ def generate_launch_description():
         DeclareLaunchArgument(
             name="rviz", default_value="false",
             description="Launch RViz?"
+        ),
+        DeclareLaunchArgument(
+            name="prefix", default_value="",
+            description="Prefix for robot link/joint names"
+        ),
+        DeclareLaunchArgument(
+            name="use_gazebo_controllers", default_value="false",
+            description="Whether to include Gazebo controllers"
+        ),
+        DeclareLaunchArgument(
+            name="use_gazebo_odom", default_value="false",
+            description="Whether to include Gazebo odometry"
         ),
 
         # Launch Gazebo
@@ -46,11 +60,18 @@ def generate_launch_description():
             executable="robot_state_publisher",
             name="robot_state_publisher",
             parameters=[{
-                "robot_description": Command([
-                    FindExecutable(name="xacro"),
-                    " ",
-                    LaunchConfiguration("model")
-                ])
+                "robot_description": ParameterValue(
+                    Command([
+                        FindExecutable(name="xacro"), " ",
+                        LaunchConfiguration("model"), " ",
+                        "prefix:=", LaunchConfiguration("prefix"), " ",
+                        "use_gazebo_controllers:=", LaunchConfiguration("use_gazebo_controllers"),
+                        " ",
+                        "use_gazebo_odom:=", LaunchConfiguration("use_gazebo_odom"),
+                        " ",
+                    ]),
+                    value_type=str
+                )
             }],
             output="screen"
         ),
@@ -96,23 +117,5 @@ def generate_launch_description():
             name="rviz2",
             output="screen",
             arguments=["-d", default_rviz_config_path]
-        ),
-        
-        IncludeLaunchDescription(
-            PythonLaunchDescriptionSource([
-                PathJoinSubstitution([
-                    FindPackageShare("slam_toolbox"),
-                    "launch",
-                    "online_async_launch.py"
-                ])
-            ]),
-            launch_arguments={
-                "use_sim_time": "true",
-                "params_file": os.path.join(
-                    pkg_share,
-                    "config",
-                    "mapping_params.yaml"
-                )
-            }.items()
-        ),
+        )
     ])
