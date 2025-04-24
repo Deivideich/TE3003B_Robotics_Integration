@@ -8,7 +8,7 @@ from geometry_msgs.msg import TransformStamped
 import tf_transformations
 from tf2_ros import Buffer, TransformListener
 from rclpy.duration import Duration
-from nav2_msgs.msg import Odometry
+from nav_msgs.msg import Odometry
 
 class DeadReckonSubscriber(Node):
     def __init__(self):
@@ -24,11 +24,11 @@ class DeadReckonSubscriber(Node):
         
     def listener_callback(self, msg):
         # Log received position for debugging
-        self.get_logger().info(f"Received Pose: {msg.pose}")
+        # self.get_logger().info(f"Received Pose: {msg.pose}")
         
         # Extract position and orientation from the PoseStamped message
-        position = msg.pose.position
-        orientation = msg.pose.orientation
+        position = msg.pose.pose.position
+        orientation = msg.pose.pose.orientation
         
         # Prepare the transformation message
         transform = TransformStamped()
@@ -46,7 +46,7 @@ class DeadReckonSubscriber(Node):
         
         # Publish the transform to the tf tree
         self.tf_broadcaster.sendTransform(transform)
-        self.get_logger().info(f"Published transform to /tf: {transform}")
+        # self.get_logger().info(f"Published transform to /tf: {transform}")
 
 def main(args=None):
     rclpy.init(args=args)
