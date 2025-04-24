@@ -162,7 +162,7 @@ class MCLNode(Node):
             x, y, theta = particle
             weight = 1.0
 
-            for i in range(0, len(scan_angles), 20):  # Check every ~20th beam for speed
+            for i in range(0, len(scan_angles), 1):  # Check every ~20th beam for speed
                 angle = scan_angles[i]
                 r = scan_ranges[i]
 
@@ -180,10 +180,14 @@ class MCLNode(Node):
                 if 0 <= map_x < self.map_width and 0 <= map_y < self.map_height:
                     cell = self.map_array[map_y, map_x]
                     # If beam hits occupied space → higher weight
+                    
                     if cell > 50:
-                        weight *= 1.0
+                        weight *= 1.5  # High weight for hitting obstacle
+                    elif cell == 0:
+                        weight *= 0.8  # Penalize for hitting free space
                     else:
-                        weight *= 0.1  # Penalize mismatch
+                        weight *= 0.5  # Unknown or out-of-bounds
+
                 else:
                     weight *= 0.1  # Out of bounds
 
@@ -220,14 +224,15 @@ class MCLNode(Node):
         if self.map is None or self.particles is None or len(self.particles) == 0:
             return
 
-        if hasattr(self, 'delta_motion'):
-            self.motion_update(self.delta_motion)
+        if hasattr(self, 'delta_motion') and (max(self.delta_motion[:2]) > 0.001 or abs(self.delta_motion[2]) > 0.01):
+            # Update particles based on odometry
+            self.get_logger().info(f"UPDATING PARTICLES")
+            self.motion_update(self.delta_motion)       
             self.sensor_update()
-            self.resample_particles()  # ← Coming next!
-
-
+            neff = 1.0 / np.sum(np.square(self.particle_weights))
+            if neff < self.num_particles / 2:
+                self.resample_particles()
             
-        
         self.publish_particles()
         self.broadcast_transform()
         self.publish_estimated_pose()
@@ -275,6 +280,12 @@ class MCLNode(Node):
             "y": 0.01,
             "theta": 0.01
         }
+        alpha1 = 0.1  # noise related to translational motion
+        alpha2 = 0.05  # noise related to rotational motion 
+        sigma_x = alpha1 * abs(dx) + alpha2 * abs(dtheta)
+        sigma_y = alpha1 * abs(dy) + alpha2 * abs(dtheta)
+        sigma_theta = alpha2 * abs(dtheta) + alpha1 * (abs(dx) + abs(dy))
+
 
         new_particles = []
         for x, y, theta in self.particles:
@@ -282,9 +293,9 @@ class MCLNode(Node):
             dx_world = dx * math.cos(theta) - dy * math.sin(theta)
             dy_world = dx * math.sin(theta) + dy * math.cos(theta)
 
-            x_new = x + dx_world + np.random.normal(0, motion_noise["x"])
-            y_new = y + dy_world + np.random.normal(0, motion_noise["y"])
-            theta_new = theta + dtheta + np.random.normal(0, motion_noise["theta"])
+            x_new = x + dx_world + np.random.normal(0, sigma_x)
+            y_new = y + dy_world + np.random.normal(0, sigma_y)
+            theta_new = theta + dtheta + np.random.normal(0, sigma_theta)
             theta_new = self.angle_diff(theta_new, 0)  # Normalize
 
             new_particles.append((x_new, y_new, theta_new))
@@ -316,6 +327,7 @@ class MCLNode(Node):
 
             # map -> odom = map -> base_link × inverse(odom -> base_link)
             # Note: We apply inverse of odom -> base_link first
+            self.get_logger().info(f"Transform from odom to base_footprint: trans={trans.transform.translation}, rot={trans.transform.rotation}")
             T_map_odom = np.matmul(T_map_base, np.linalg.inv(T_odom_base))
             
             # Extract translation and rotation
