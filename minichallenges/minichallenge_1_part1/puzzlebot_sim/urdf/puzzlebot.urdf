@@ -1,0 +1,91 @@
+<?xml version="1.0"?>
+
+<robot name="puzzlebot">
+
+<link name="base_link">
+    <visual>
+    <origin xyz="0 0 -0.0205" rpy="0 0 0"/>
+    <geometry>
+        <mesh filename="file:///home/juancarlos/te3003_ws/src/puzzlebot_sim/meshes/Puzzlebot_Jetson_Lidar_Edition_Base.stl"/>
+    </geometry>
+        <material name="yellow">
+            <color rgba="0.8 0.8 0.05 1.0"/>
+        </material>
+    </visual>
+</link>
+
+<link name="wheel_r_link">
+    <visual>
+        <origin xyz="0 0 -0.004" rpy="0 0 0"/>
+        <geometry>
+            <mesh filename="file:///home/juancarlos/te3003_ws/src/link_act/meshes/propeller_cw_puller_5in.stl"/>
+        </geometry>
+        <material name="yellow">
+            <color rgba="0.8 0.8 0.05 1.0"/>
+        </material>
+    </visual>
+</link>
+
+<link name="wheel_l_link">
+    <visual>
+        <origin xyz="0 0 -0.004" rpy="0 0 0"/>
+        <geometry>
+            <mesh filename="file:///home/juancarlos/te3003_ws/src/link_act/meshes/propeller_ccw_puller_5in.stl"/>
+        </geometry>
+        <material name="yellow">
+            <color rgba="0.8 0.8 0.05 1.0"/>
+        </material>
+    </visual>
+</link>
+
+<link name="prop_3">
+    <visual>
+        <origin xyz="0 0 -0.004" rpy="0 0 0"/>
+        <geometry>
+            <mesh filename="file:///home/juancarlos/te3003_ws/src/link_act/meshes/propeller_cw_puller_5in.stl"/>
+        </geometry>
+        <material name="yellow">
+            <color rgba="0.8 0.8 0.05 1.0"/>
+        </material>
+    </visual>
+</link>
+
+<link name="prop_4">
+    <visual>
+        <origin xyz="0 0 -0.004" rpy="0 0 0"/>
+        <geometry>
+            <mesh filename="file:///home/juancarlos/te3003_ws/src/link_act/meshes/propeller_ccw_puller_5in.stl"/>
+        </geometry>
+        <material name="yellow">
+            <color rgba="0.8 0.8 0.05 1.0"/>
+        </material>
+    </visual>
+</link>
+
+<joint name="base_link_joint" type="fixed">
+    <parent link="base_footprint"/>
+    <child link="base_link"/>
+    <origin xyz="0 0 0.05" rpy="0 0 0"/>
+</joint>
+
+<joint name="wheel_r_joint" type="continuous">
+    <parent link="base_link"/>
+    <child link="wheel_r_link"/>
+    <origin xyz="0.052 -0.95 -0.0025" rpy="0 0 0"/>
+    <axis xyz="1 0 0"/>
+</joint>
+
+<joint name="wheel_l_joint" type="continuous">
+    <parent link="base_link"/>
+    <child link="wheel_l_link"/>
+    <origin xyz="0.052 0.95 -0.0025" rpy="0 0 0"/>
+    <axis xyz="1 0 0"/>
+</joint>
+
+<joint name="caster_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="caster_link"/>
+    <origin xyz="-0.095 0 -0.03" rpy="0 0 0"/>
+</joint>
+
+</robot>
