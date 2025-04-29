@@ -37,7 +37,7 @@ class MCLNode(Node):
         self.last_scan = None
         self.scan_received = False        
 
-        self.min_distance = 0.1
+        self.min_distance = 0.05
         self.min_angle = 10*math.pi/180.0
         self.predictionCounter = 0
         self.m_sync_count =0
@@ -59,7 +59,7 @@ class MCLNode(Node):
         self.create_subscription(LaserScan, '/scan', self.scan_callback, 10)
 
         #### TIMER ####
-        self.timer = self.create_timer(0.1, self.mcl_loop)
+        self.timer = self.create_timer(0.05, self.mcl_loop)
 
         ### DEBUG ####
         if self.get_parameter('isDebug').get_parameter_value().bool_value:
@@ -313,9 +313,16 @@ class MCLNode(Node):
             theta_new = theta + delta_rot1_noisy + delta_rot2_noisy
 
             self.particles[i] = (x_new, y_new, theta_new)
-            
+    
+    
     def broadcast_transform(self):
         try:
+            x, y, theta = self.estimate_pose()
+
+            if not self.tf_buffer.can_transform('odom', 'base_link', rclpy.time.Time()):
+                self.get_logger().warn("Transform from odom to base_link not available yet")
+                return
+
             # Get latest odom -> base_link transform
             trans = self.tf_buffer.lookup_transform('odom', 'base_link', rclpy.time.Time())
             
@@ -331,10 +338,19 @@ class MCLNode(Node):
             # Compose transform from odom -> base_link
             trans_t = trans.transform.translation
             trans_q = trans.transform.rotation
+            
+            quat = [trans_q.x, trans_q.y, trans_q.z, trans_q.w]
+            if np.any(np.isnan(quat)) or np.any(np.isinf(quat)):
+                self.get_logger().warn("Invalid quaternion in odom->base_link transform")
+                return
+            
             T_odom_base = tf_transformations.compose_matrix(
                 translate=[trans_t.x, trans_t.y, trans_t.z],
                 angles=tf_transformations.euler_from_quaternion([trans_q.x, trans_q.y, trans_q.z, trans_q.w])
             )
+
+            self.get_logger().info(f"Estimated pose: {x:.2f}, {y:.2f}, {theta:.2f}")
+            self.get_logger().info(f"Odom->base trans: {trans_t}")
 
             # map -> odom = map -> base_link × inverse(odom -> base_link)
             # Note: We apply inverse of odom -> base_link first
@@ -365,7 +381,6 @@ class MCLNode(Node):
 
         except Exception as e:
             self.get_logger().warn(f"TF lookup failed: {str(e)}")
-
 
     def mcl_loop(self):
         if self.map is None:
