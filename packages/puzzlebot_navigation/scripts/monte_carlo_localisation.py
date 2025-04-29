@@ -13,34 +13,61 @@ from geometry_msgs.msg import TransformStamped
 from geometry_msgs.msg import Pose, PoseWithCovarianceStamped, TransformStamped
 from nav_msgs.msg import Odometry
 import tf_transformations
+from bisect import bisect_left
 
 class MCLNode(Node):
     def __init__(self):
         super().__init__('mcl_node')
 
-        self.create_subscription(OccupancyGrid, '/map', self.map_callback, 10)
-        self.create_subscription(LaserScan, '/scan', self.scan_callback, 10)
-        self.create_subscription(Odometry, '/odom', self.odom_callback, 10)
-        
-        self.pose_pub = self.create_publisher(PoseWithCovarianceStamped, 'mcl_pose', 10)
+        self.declare_parameter('isDebug', False)
 
         self.num_particles = 100
-        self.particles = []
-        self.particles_pub = self.create_publisher(PoseArray, 'particle_cloud', 10)
+        self.particles = []        
+        self.particle_weights = np.zeros(self.num_particles)
         
+        self.map = None
+        self.map_received = False
+
+        self.last_odom = None
+        self.last_odom = None
+        self.odom_received = False
+        self.odom_covariance = np.array([0.2, 0.2, 0.2, 0.2, 0.2, 0.2])
+        self.delta_motion = []
+        
+        self.last_scan = None
+        self.scan_received = False        
+
+        self.min_distance = 0.1
+        self.min_angle = 10*math.pi/180.0
+        self.predictionCounter = 0
+        self.m_sync_count =0
+        self.repropagateCountNeeded = 1
+
+        #### TF HANDLERS ####
         self.tf_buffer = tf2_ros.Buffer()
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
-        self.particle_weights = np.zeros(self.num_particles)
-        self.last_odom = None
-        self.map = None
-        self.last_scan = None
-        self.last_odom = None
-        self.map_received = False
-        self.timer = self.create_timer(0.1, self.mcl_loop)
-        self.scan_received = False
-        self.odom_received = False
-
         self.tf_broadcaster = TransformBroadcaster(self)
+
+        #### PUBLISHERS ####
+        self.scan_pub = self.create_publisher(LaserScan, '/scan_view', 10)
+        self.pose_pub = self.create_publisher(PoseWithCovarianceStamped, '/mcl_pose', 10)
+        self.particles_pub = self.create_publisher(PoseArray, '/particle_cloud', 10)
+        
+        #### SUBSCRIBERS ####
+        self.create_subscription(OccupancyGrid, '/map', self.map_callback, 10)
+        self.create_subscription(Odometry, '/odom', self.odom_callback, 10)
+        self.create_subscription(LaserScan, '/scan', self.scan_callback, 10)
+
+        #### TIMER ####
+        self.timer = self.create_timer(0.1, self.mcl_loop)
+
+        ### DEBUG ####
+        if self.get_parameter('isDebug').get_parameter_value().bool_value:
+            self.get_logger().info("Debug mode is ON")
+            self.create_timer(0.1, self.publish_real_pose)
+            
+
+    # def publish_real_pose(self):
 
     def publish_estimated_pose(self):
         est = self.estimate_pose()
@@ -58,11 +85,6 @@ class MCLNode(Node):
         msg.pose.pose.orientation.y = q[1]
         msg.pose.pose.orientation.z = q[2]
         msg.pose.pose.orientation.w = q[3]
-
-        # You can tweak this covariance as needed
-        msg.pose.covariance[0] = 0.1
-        msg.pose.covariance[7] = 0.1
-        msg.pose.covariance[35] = 0.2
 
         self.pose_pub.publish(msg)
 
@@ -115,6 +137,7 @@ class MCLNode(Node):
         pa.header.frame_id = 'map'  # This should match your fixed frame in RViz
 
         for x, y, theta in self.particles:
+            # self.get_logger().info(f"Particle: x={x}, y={y}, theta={theta}")
             pose = Pose()
             pose.position.x = x
             pose.position.y = y
@@ -132,22 +155,32 @@ class MCLNode(Node):
 
     def euler_to_quaternion(self, roll, pitch, yaw):
         # Returns (x, y, z, w)
-        return tf_transformations.quaternion_from_euler(roll, pitch, yaw)
+        try:
+            return tf_transformations.quaternion_from_euler(roll, pitch, yaw)
+        except Exception as e:
+            self.get_logger().warn(f"Error converting euler to quaternion: {str(e)}")
+            return (0.0, 0.0, 0.0, 1.0)
     
     def scan_callback(self, msg):
         self.scan = msg
         self.scan_received = True
 
+        scan_msg = msg
+        scan_msg.header.stamp = self.get_clock().now().to_msg()
+        
+        # Publish the scan message
+        self.scan_pub.publish(scan_msg)
 
     def odom_callback(self, msg):
         self.odom = msg
         self.odom_received = True
-
+        if self.last_odom is None:
+            self.last_odom = msg
+            return
         # Save delta odom
-        if self.last_odom is not None:
-            self.delta_motion = self.compute_odometry_delta(self.last_odom, self.odom)
-        self.last_odom = self.odom
+        self.delta_motion = self.compute_odometry_delta(self.last_odom, self.odom)
 
+    ## TODO: CHECK THIS METHOD
     def sensor_update(self):
         if not self.scan_received:
             return
@@ -155,50 +188,51 @@ class MCLNode(Node):
         scan_angles = np.arange(self.scan.angle_min, self.scan.angle_max, self.scan.angle_increment)
         scan_ranges = np.array(self.scan.ranges)
         max_range = self.scan.range_max
+        maxScore = 0.0
+        
+        try:
+            for j, particle in enumerate(self.particles):
+                x, y, theta = particle
+                weight = 0.0
+                #theta = theta*np.pi/180.0
 
-        weights = []
+                for i in range(0, len(scan_angles), 1):  # Check every ~20th beam for speed
+                    angle = scan_angles[i]
+                    r = scan_ranges[i]
+                    if r >= max_range or np.isnan(r):
+                        continue
+                        
+                    # Transform laser point to world
+                    beam_x = x + r * np.cos(theta + angle)
+                    beam_y = y + r * np.sin(theta + angle)
 
-        for particle in self.particles:
-            x, y, theta = particle
-            weight = 1.0
+                    float_x = (beam_x - self.map_origin.x) / self.map_resolution
+                    float_y = (beam_y - self.map_origin.y) / self.map_resolution
 
-            for i in range(0, len(scan_angles), 1):  # Check every ~20th beam for speed
-                angle = scan_angles[i]
-                r = scan_ranges[i]
+                    # Check if the BEAM is inf or nan
+                    if np.isnan(float_x) or np.isnan(float_y) or np.isinf(float_x) or np.isinf(float_y):
+                        continue
 
-                if r >= max_range or np.isnan(r):
-                    continue
+                    # Convert world -> map indices
+                    map_x = int((beam_x - self.map_origin.x) / self.map_resolution)
+                    map_y = int((beam_y - self.map_origin.y) / self.map_resolution)
 
-                # Transform laser point to world
-                beam_x = x + r * np.cos(theta + angle)
-                beam_y = y + r * np.sin(theta + angle)
+                    if not(0 <= map_x < self.map_width and 0 <= map_y < self.map_height):
+                        continue
+                    # Check if the be
+                
+                    weight += self.map_array[map_y, map_x] / 255.0
+                
+                self.particle_weights[j] += weight / len(scan_angles)
 
-                # Convert world -> map indices
-                map_x = int((beam_x - self.map_origin.x) / self.map_resolution)
-                map_y = int((beam_y - self.map_origin.y) / self.map_resolution)
-
-                if 0 <= map_x < self.map_width and 0 <= map_y < self.map_height:
-                    cell = self.map_array[map_y, map_x]
-                    # If beam hits occupied space → higher weight
-                    
-                    if cell > 50:
-                        weight *= 1.8  # High weight for hitting obstacle
-                    elif cell == 0:
-                        weight *= 0.5  # Penalize for hitting free space
-                    else:
-                        weight *= 0.1  # Unknown or out-of-bounds
-
-                else:
-                    weight *= 0.1  # Out of bounds
-
-            weights.append(weight)
-
-        # Normalize weights
-        weights = np.array(weights)
-        weights += 1e-300  # Avoid divide by zero
-        weights /= np.sum(weights)
-
-        self.particle_weights = weights
+                if maxScore < weight:
+                    maxScore = weight
+                    self.maxParticleTuple = particle
+        except Exception as e:
+            self.get_logger().warn(f"TF lookup failed: {str(e)}")
+            # If the transform fails, we can skip this particle
+            # or handle it in a way that makes sense for your application
+            # For now, we'll just continue to the nex
 
 
     def compute_odometry_delta(self, last_odom, current_odom):
@@ -220,88 +254,65 @@ class MCLNode(Node):
         diff = a - b
         return (diff + np.pi) % (2 * np.pi) - np.pi
 
-    def mcl_loop(self):
-        if self.map is None or self.particles is None or len(self.particles) == 0:
-            return
-
-        if hasattr(self, 'delta_motion') and ( math.sqrt(self.delta_motion[0]**2 + self.delta_motion[1]**2) > 0.001 or abs(self.delta_motion[2]) > 0.001):
-            # Update particles based on odometry
-            self.get_logger().info(f"UPDATING PARTICLES")
-            self.motion_update(self.delta_motion)       
-            self.sensor_update()
-
-            neff = 1.0 / np.sum(np.square(self.particle_weights))
-            if neff < self.num_particles / 2:
-                self.resample_particles()
-            
-        self.publish_particles()
-        self.broadcast_transform()
-        self.publish_estimated_pose()
-
-
     def estimate_pose(self):
-        x = 0.0
-        y = 0.0
-        sin_sum = 0.0
-        cos_sum = 0.0
-
-        for i, (px, py, theta) in enumerate(self.particles):
-            weight = self.particle_weights[i]
-            x += px * weight
-            y += py * weight
-            sin_sum += np.sin(theta) * weight
-            cos_sum += np.cos(theta) * weight
-
-        theta = np.arctan2(sin_sum, cos_sum)
-        return np.array([x, y, theta])
+        if hasattr(self, 'maxParticleTuple'):
+            return self.maxParticleTuple
+        return np.array([0.0, 0.0, 0.0])
     
     def resample_particles(self):
-        new_particles = []
-        M = self.num_particles
-        weights = self.particle_weights
+        particlesScores = []
+        particleSampled = []
+        scoreBase = 0.0
 
-        index = int(np.random.rand() * M)
-        beta = 0.0
-        mw = np.max(weights)
+        for i in range(self.num_particles):
+            scoreBase += self.particle_weights[i]
+            particlesScores.append(scoreBase)
 
-        for _ in range(M):
-            beta += np.random.rand() * 2.0 * mw
-            while beta > weights[index]:
-                beta -= weights[index]
-                index = (index + 1) % M
-            new_particles.append(self.particles[index])
+        for _ in range(self.num_particles):
+            randomNum = np.random.uniform(0, scoreBase)
+            index = bisect_left(particlesScores, randomNum)
 
-        self.particles = np.array(new_particles)
+            particle = self.particles[index]
+            particleSampled.append(particle)
+        
+        self.particles = []
+        for _ in range(self.num_particles):
+            particle = particleSampled[np.random.randint(0, len(particleSampled))]
+            x_offset = np.random.normal(0, 0.05)
+            y_offset = np.random.normal(0, 0.05)
+            theta_offset = np.random.normal(-np.pi/16, np.pi/16)
+            x_new = particle[0] + x_offset
+            y_new = particle[1] + y_offset
+            theta_new = particle[2] + theta_offset
+            self.particles.append((x_new, y_new, theta_new))
+            
+        self.particles = np.array(self.particles)
+        self.particle_weights = np.zeros(self.particles.shape[0])
+
     
+    ## TODO: CHECK THIS METHOD
     def motion_update(self, delta):
         dx, dy, dtheta = delta
 
-        motion_noise = {
-            "x": 0.01,
-            "y": 0.01,
-            "theta": 0.01
-        }
-        alpha1 = 0.05  # noise related to translational motion
-        alpha2 = 0.01  # noise related to rotational motion 
-        sigma_x = alpha1 * abs(dx) + alpha2 * abs(dtheta)
-        sigma_y = alpha1 * abs(dy) + alpha2 * abs(dtheta)
-        sigma_theta = alpha2 * abs(dtheta) + alpha1 * (abs(dx) + abs(dy))
+        delta_trans = math.sqrt(dx**2 + dy**2)
+        delta_rot = math.atan2(dy, dx)
+        
+        trans_noise_coeff = self.odom_covariance[2] * abs(delta_trans) + self.odom_covariance[3] * abs(dtheta)
+        rot_noise_coeff = self.odom_covariance[0] * abs(dtheta) + self.odom_covariance[1] * abs(delta_trans)
 
+        for i, (x, y, theta) in enumerate(self.particles):
+            delta_rot1 = self.angle_diff(delta_rot, theta)
+            delta_rot2 = self.angle_diff(dtheta, delta_rot1)
 
-        new_particles = []
-        for x, y, theta in self.particles:
-            # Apply rotation to delta to account for current particle heading
-            dx_world = dx * math.cos(theta) - dy * math.sin(theta)
-            dy_world = dx * math.sin(theta) + dy * math.cos(theta)
+            delta_trans_noisy = delta_trans + np.random.normal(0, trans_noise_coeff)
+            delta_rot1_noisy = delta_rot1 + np.random.normal(0, rot_noise_coeff)
+            delta_rot2_noisy = delta_rot2 + np.random.normal(0, rot_noise_coeff)
 
-            x_new = x + dx_world + np.random.normal(0, sigma_x)
-            y_new = y + dy_world + np.random.normal(0, sigma_y)
-            theta_new = theta + dtheta + np.random.normal(0, sigma_theta)
-            theta_new = self.angle_diff(theta_new, 0)  # Normalize
+            x_new = x + delta_trans_noisy * math.cos(theta + delta_rot1_noisy)
+            y_new = y + delta_trans_noisy * math.sin(theta + delta_rot1_noisy)
+            theta_new = theta + delta_rot1_noisy + delta_rot2_noisy
 
-            new_particles.append((x_new, y_new, theta_new))
-
-        self.particles = new_particles
+            self.particles[i] = (x_new, y_new, theta_new)
             
     def broadcast_transform(self):
         try:
@@ -310,7 +321,6 @@ class MCLNode(Node):
             
             # Get estimated pose in map (from particle cloud)
             x, y, theta = self.estimate_pose()
-            q_map = self.euler_to_quaternion(0, 0, theta)
 
             # Compose transform from map -> base_link
             T_map_base = tf_transformations.compose_matrix(
@@ -328,7 +338,7 @@ class MCLNode(Node):
 
             # map -> odom = map -> base_link × inverse(odom -> base_link)
             # Note: We apply inverse of odom -> base_link first
-            self.get_logger().info(f"Transform from odom to base_footprint: trans={trans.transform.translation}, rot={trans.transform.rotation}")
+            #self.get_logger().info(f"Transform from odom to base_footprint: trans={trans.transform.translation}, rot={trans.transform.rotation}")
             T_map_odom = np.matmul(T_map_base, np.linalg.inv(T_odom_base))
             
             # Extract translation and rotation
@@ -357,7 +367,38 @@ class MCLNode(Node):
             self.get_logger().warn(f"TF lookup failed: {str(e)}")
 
 
+    def mcl_loop(self):
+        if self.map is None:
+            return
+        if self.particles is None or len(self.particles) == 0:
+            return
+        if len(self.delta_motion) <= 0:
+            return
+        
+        diffDistance = math.sqrt(self.delta_motion[0]**2 + self.delta_motion[1]**2)
+        diffAngle = abs(self.delta_motion[2])*180.0/3.141592
+        # self.get_logger().info(f"MCL: distance={diffDistance}, angle={diffAngle}")
+        if not(diffDistance < self.min_distance and diffAngle < self.min_angle):
+            # self.get_logger().info(f"Updating particles")
+            self.motion_update(self.delta_motion)       
+            self.sensor_update()
+
+            self.predictionCounter += 1
+            neff = 1.0 / np.sum(np.square(self.particle_weights))
+
+            if (neff < self.num_particles / 2) and (self.predictionCounter == self.repropagateCountNeeded):
+                self.resample_particles()
+                self.predictionCounter = 0
+            
+            self.last_odom = self.odom
+            
+        self.publish_particles()
+        self.broadcast_transform()
+        self.publish_estimated_pose()
+
+
 def main(args=None):
+    np.seterr(over='raise')
     rclpy.init(args=args)
     node = MCLNode()
     rclpy.spin(node)
