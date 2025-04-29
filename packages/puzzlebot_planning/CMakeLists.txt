@@ -26,7 +26,7 @@ ament_target_dependencies(puzzlebot_planning_model PUBLIC
 )
 
 # Add the ROS test node executable
-add_executable(test_state_node src/nodes/test_state_node.cpp)
+add_executable(test_state_node src/nodes/tests/test_state_node.cpp)
 ament_target_dependencies(test_state_node PUBLIC
     rclcpp
 )
