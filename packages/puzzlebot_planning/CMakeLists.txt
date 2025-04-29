@@ -1,6 +1,10 @@
 cmake_minimum_required(VERSION 3.8)
 project(puzzlebot_planning)
 
+if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  add_compile_options(-Wall -Wextra -Wpedantic)
+endif()
+
 # Find dependencies
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
@@ -15,6 +19,7 @@ find_package(rclcpp REQUIRED)
 # Add model library
 add_library(puzzlebot_planning_model SHARED
     src/model/se2_state.cpp
+    src/model/trajectory.cpp
 )
 target_include_directories(puzzlebot_planning_model PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -38,13 +43,20 @@ target_link_libraries(test_state_node PUBLIC
 # Specify dependencies for building order
 add_dependencies(test_state_node puzzlebot_planning_model)
 
+# Add the interpolate test node executable
+add_executable(test_interpolate_node src/nodes/tests/test_interpolate_node.cpp)
+# Use PRIVATE or INTERFACE if rclcpp headers aren't needed in test_interpolate_node's headers
+ament_target_dependencies(test_interpolate_node PUBLIC rclcpp)
+target_link_libraries(test_interpolate_node PUBLIC puzzlebot_planning_model)
+add_dependencies(test_interpolate_node puzzlebot_planning_model)
+
 # Install headers
 install(
     DIRECTORY include/
     DESTINATION include
 )
 
-# Install library
+# Install library and executables
 install(
     TARGETS puzzlebot_planning_model
     ARCHIVE DESTINATION lib
@@ -52,9 +64,13 @@ install(
     RUNTIME DESTINATION bin # Only needed if library has standalone executables
 )
 
-# Install the executable
 install(
     TARGETS test_state_node
+    DESTINATION lib/${PROJECT_NAME}
+)
+
+install(
+    TARGETS test_interpolate_node
     DESTINATION lib/${PROJECT_NAME}
 )
 
