@@ -1,7 +1,0 @@
-geometry_msgs/PoseStamped goal
----
-bool success
----
-float32 progress
-float32 distance
-float32 angle
