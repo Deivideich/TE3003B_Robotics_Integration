@@ -1,29 +1,40 @@
 #!/usr/bin/env python3
+import math
+import numpy as np
+import ctypes
+import pathlib
+from sklearn.cluster import DBSCAN
+
 import rclpy
 from rclpy.node import Node
-import math
 from nav_msgs.msg import OccupancyGrid, Odometry
 from sensor_msgs.msg import LaserScan
-from geometry_msgs.msg import Pose
+from geometry_msgs.msg import Pose, PoseWithCovarianceStamped, TransformStamped, PoseArray, PoseStamped
 import tf2_ros
-import numpy as np
-from geometry_msgs.msg import PoseArray, Pose
 from tf2_ros import TransformBroadcaster
-from geometry_msgs.msg import TransformStamped
-from geometry_msgs.msg import Pose, PoseWithCovarianceStamped, TransformStamped
-from nav_msgs.msg import Odometry
 import tf_transformations
-from bisect import bisect_left
+from visualization_msgs.msg import Marker, MarkerArray
+
+parent_path = str(pathlib.Path(__file__).parent.resolve())
+
+cpp_mcl = f"{parent_path}/../utils/cpp/mcl_utils.so"
+
+cpp_mcl = "/workspace/8voSemestre/TE3003B_Robotics_Integration/packages/puzzlebot_navigation/utils/cpp/mcl_utils.so"
+
 
 class MCLNode(Node):
     def __init__(self):
         super().__init__('mcl_node')
+        self.mcl_cpp = ctypes.CDLL(cpp_mcl)
 
         self.declare_parameter('isDebug', False)
+        self.declare_parameter('useClustering', False)
 
-        self.num_particles = 100
+        self.num_particles = 500
+        self.num_dimensions = 3
         self.particles = []        
         self.particle_weights = np.zeros(self.num_particles)
+        self.cluster_dbscan = DBSCAN(eps=0.5, min_samples=self.num_particles//10)
         
         self.map = None
         self.map_received = False
@@ -31,14 +42,14 @@ class MCLNode(Node):
         self.last_odom = None
         self.last_odom = None
         self.odom_received = False
-        self.odom_covariance = np.array([0.2, 0.2, 0.2, 0.2, 0.2, 0.2])
+        self.odom_covariance = np.array([0.5, 0.5, 0.5, 0.5, 0.5, 0.5])
         self.delta_motion = []
         
         self.last_scan = None
         self.scan_received = False        
 
         self.min_distance = 0.05
-        self.min_angle = 10*math.pi/180.0
+        self.min_angle = 10
         self.predictionCounter = 0
         self.m_sync_count =0
         self.repropagateCountNeeded = 1
@@ -52,6 +63,7 @@ class MCLNode(Node):
         self.scan_pub = self.create_publisher(LaserScan, '/scan_view', 10)
         self.pose_pub = self.create_publisher(PoseWithCovarianceStamped, '/mcl_pose', 10)
         self.particles_pub = self.create_publisher(PoseArray, '/particle_cloud', 10)
+        self.clusters_pub = self.create_publisher(MarkerArray, '/clusters', 10)
         
         #### SUBSCRIBERS ####
         self.create_subscription(OccupancyGrid, '/map', self.map_callback, 10)
@@ -67,7 +79,71 @@ class MCLNode(Node):
             self.create_timer(0.1, self.publish_real_pose)
             
 
-    # def publish_real_pose(self):
+    def publish_clusters(self):
+        if self.get_parameter('useClustering').get_parameter_value().bool_value:
+            clusters = self.cluster_dbscan.fit(self.particles)
+            unique_labels = set(clusters.labels_)
+            if -1 in unique_labels:
+                unique_labels.remove(-1)
+            if len(unique_labels) == 0:
+                self.get_logger().warn("No clusters found")
+                return
+            self.get_logger().info(f"Found {len(unique_labels)} clusters")
+            marker_array = MarkerArray()
+            for label in unique_labels:
+                if label == -1:
+                    continue
+                color = np.random.rand(3)
+                cluster_indices = np.where(clusters.labels_ == label)[0]
+                cluster_particles = [self.particles[i] for i in cluster_indices]
+                cluster_center = np.mean(cluster_particles, axis=0)
+                for i in range(len(cluster_particles)):
+                    marker = Marker()
+                    marker.header.frame_id = 'map'
+                    marker.header.stamp = self.get_clock().now().to_msg()
+                    marker.ns = 'clusters'
+                    marker.id = int(i)
+                    marker.type = Marker.SPHERE
+                    marker.action = Marker.ADD
+                    marker.pose.position.x = float(cluster_particles[i][0])
+                    marker.pose.position.y = float(cluster_particles[i][1])
+                    marker.pose.position.z = 0.0
+                    marker.pose.orientation.x = 0.0
+                    marker.pose.orientation.y = 0.0
+                    marker.pose.orientation.z = 0.0
+                    marker.pose.orientation.w = 1.0
+                    marker.scale.x = 0.1
+                    marker.scale.y = 0.1
+                    marker.scale.z = 0.1
+                    marker.color.r = color[0]
+                    marker.color.g = color[1]
+                    marker.color.b = color[2]
+                    marker.color.a = 1.0
+                    marker_array.markers.append(marker)
+                cluster_marker = Marker()
+                cluster_marker.header.frame_id = 'map'
+                cluster_marker.header.stamp = self.get_clock().now().to_msg()
+                cluster_marker.ns = 'clusters'
+                cluster_marker.id = int(label)
+                cluster_marker.type = Marker.SPHERE
+                cluster_marker.action = Marker.ADD
+                cluster_marker.pose.position.x = float(cluster_center[0])
+                cluster_marker.pose.position.y = float(cluster_center[1])
+                cluster_marker.pose.position.z = 0.0
+                cluster_marker.pose.orientation.x = 0.0
+                cluster_marker.pose.orientation.y = 0.0
+                cluster_marker.pose.orientation.z = 0.0
+                cluster_marker.pose.orientation.w = 1.0
+                cluster_marker.scale.x = 0.2
+                cluster_marker.scale.y = 0.2
+                cluster_marker.scale.z = 0.2
+                cluster_marker.color.r = color[0]
+                cluster_marker.color.g = color[1]
+                cluster_marker.color.b = color[2]
+                cluster_marker.color.a = 1.0
+                marker_array.markers.append(cluster_marker)
+            self.clusters_pub.publish(marker_array)
+
 
     def publish_estimated_pose(self):
         est = self.estimate_pose()
@@ -139,8 +215,8 @@ class MCLNode(Node):
         for x, y, theta in self.particles:
             # self.get_logger().info(f"Particle: x={x}, y={y}, theta={theta}")
             pose = Pose()
-            pose.position.x = x
-            pose.position.y = y
+            pose.position.x = float(x)
+            pose.position.y = float(y)
             pose.position.z = 0.0
 
             q = self.euler_to_quaternion(0, 0, theta)
@@ -182,57 +258,77 @@ class MCLNode(Node):
 
     ## TODO: CHECK THIS METHOD
     def sensor_update(self):
-        if not self.scan_received:
-            return
-
-        scan_angles = np.arange(self.scan.angle_min, self.scan.angle_max, self.scan.angle_increment)
-        scan_ranges = np.array(self.scan.ranges)
-        max_range = self.scan.range_max
-        maxScore = 0.0
-        
         try:
-            for j, particle in enumerate(self.particles):
-                x, y, theta = particle
-                weight = 0.0
-                #theta = theta*np.pi/180.0
+            if not self.scan_received:
+                return
 
-                for i in range(0, len(scan_angles), 1):  # Check every ~20th beam for speed
-                    angle = scan_angles[i]
-                    r = scan_ranges[i]
-                    if r >= max_range or np.isnan(r):
-                        continue
-                        
-                    # Transform laser point to world
-                    beam_x = x + r * np.cos(theta + angle)
-                    beam_y = y + r * np.sin(theta + angle)
+            maxScore = 0.0
+            
+            map_array = np.array(self.map.data, dtype=np.int8)
+            map_origin = np.array([self.map_origin.x, self.map_origin.y], dtype=np.float32)
+            map_shape = np.array([self.map_height, self.map_width], dtype=np.int32)
+            scan_angles = np.arange(self.scan.angle_min, self.scan.angle_max, self.scan.angle_increment)
+            scan_ranges = np.array(self.scan.ranges)
+            max_range = self.scan.range_max
 
-                    float_x = (beam_x - self.map_origin.x) / self.map_resolution
-                    float_y = (beam_y - self.map_origin.y) / self.map_resolution
+            
+            particles = np.array(self.particles, dtype=np.float32).flatten()
+            output_weights = np.zeros(self.num_particles, dtype=np.float32)
+            max_particle = np.zeros(self.num_dimensions, dtype=np.float32)
+        
+            self.mcl_cpp.weight_particles.argtypes = [
+                ctypes.POINTER(ctypes.c_int),                      # map_array
+                ctypes.POINTER(ctypes.c_float),                      # map_origin
+                ctypes.POINTER(ctypes.c_int),                    # map_shape
+                ctypes.c_float,                    # map_resolution
+                ctypes.POINTER(ctypes.c_float),    # scan_angles
+                ctypes.POINTER(ctypes.c_float),    # scan_ranges
+                ctypes.c_int,                      # scan_size
+                ctypes.c_float,                    # max_range
+                ctypes.c_int,                      # num_particles
+                ctypes.c_int,                      # num_dimensions
+                ctypes.POINTER(ctypes.c_float),    # particles
+                ctypes.POINTER(ctypes.c_float),    # max_particles (OUTPUT)
+                ctypes.POINTER(ctypes.c_float),    # weights (OUTPUT)
+            ]
+            self.mcl_cpp.weight_particles.restype = ctypes.c_bool
 
-                    # Check if the BEAM is inf or nan
-                    if np.isnan(float_x) or np.isnan(float_y) or np.isinf(float_x) or np.isinf(float_y):
-                        continue
+            # Convert numpy arrays to ctypes
+            marray_ctypes = map_array.ctypes.data_as(ctypes.POINTER(ctypes.c_int))
+            morigin_ctypes = map_origin.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+            mshape_ctypes = map_shape.ctypes.data_as(ctypes.POINTER(ctypes.c_int))
 
-                    # Convert world -> map indices
-                    map_x = int((beam_x - self.map_origin.x) / self.map_resolution)
-                    map_y = int((beam_y - self.map_origin.y) / self.map_resolution)
+            sangles_ctypes = scan_angles.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+            sranges_ctypes = scan_ranges.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+            
+            particles_ctypes = particles.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+            max_particle_ctypes = max_particle.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+            out_weights = output_weights.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
 
-                    if not(0 <= map_x < self.map_width and 0 <= map_y < self.map_height):
-                        continue
-                    # Check if the be
-                
-                    weight += self.map_array[map_y, map_x] / 255.0
-                
-                self.particle_weights[j] += weight / len(scan_angles)
+            success = self.mcl_cpp.weight_particles(
+                marray_ctypes, 
+                morigin_ctypes,
+                mshape_ctypes,
+                self.map_resolution,
+                sangles_ctypes,
+                sranges_ctypes,
+                len(scan_angles),
+                max_range,
+                self.num_particles,
+                self.num_dimensions,
+                particles_ctypes,
+                max_particle_ctypes,
+                out_weights,
+            )
 
-                if maxScore < weight:
-                    maxScore = weight
-                    self.maxParticleTuple = particle
+            if success:
+                self.maxParticle = max_particle
+                self.particle_weights = output_weights
+            else:
+                self.get_logger().warn("C++ resampling failed. Falling back to Python version.")
+
         except Exception as e:
-            self.get_logger().warn(f"TF lookup failed: {str(e)}")
-            # If the transform fails, we can skip this particle
-            # or handle it in a way that makes sense for your application
-            # For now, we'll just continue to the nex
+            self.get_logger().warn(f"{str(e)}")
 
 
     def compute_odometry_delta(self, last_odom, current_odom):
@@ -255,42 +351,89 @@ class MCLNode(Node):
         return (diff + np.pi) % (2 * np.pi) - np.pi
 
     def estimate_pose(self):
-        if hasattr(self, 'maxParticleTuple'):
-            return self.maxParticleTuple
+        if self.get_parameter('useClustering').get_parameter_value().bool_value:
+            clusters = self.cluster_dbscan.fit(self.particles)
+            unique_labels = set(clusters.labels_)
+            if -1 in unique_labels:
+                unique_labels.remove(-1)
+            if len(unique_labels) == 0:
+                self.get_logger().warn("No clusters found")
+                if hasattr(self, 'maxParticle'):
+                    return np.array([float(self.maxParticle[0]), float(self.maxParticle[1]), float(self.maxParticle[2])])
+                else: 
+                    return np.array([0.0, 0.0, 0.0])
+                
+                
+            self.get_logger().info(f"Found {len(unique_labels)} clusters")
+            maxWeight = 0.0
+            bestCluster = None
+            for label in unique_labels:
+                cluster_indices = np.where(clusters.labels_ == label)[0]
+                cluster_particles = [self.particles[i] for i in cluster_indices]
+                cluster_weights = [self.particle_weights[i] for i in cluster_indices]
+                cluster_center = np.mean(cluster_particles, axis=0)
+                cluster_mean = np.mean(cluster_weights, axis=0)
+                if cluster_mean > maxWeight:
+                    bestCluster = cluster_center
+                    maxWeight = cluster_mean
+            
+            if bestCluster != None:            
+                return np.array([float(bestCluster[0]), float(bestCluster[1]), float(bestCluster[2])])
+        if hasattr(self, 'maxParticle'):
+            return np.array([float(self.maxParticle[0]), float(self.maxParticle[1]), float(self.maxParticle[2])])
         return np.array([0.0, 0.0, 0.0])
     
-    def resample_particles(self):
-        particlesScores = []
-        particleSampled = []
-        scoreBase = 0.0
-
-        for i in range(self.num_particles):
-            scoreBase += self.particle_weights[i]
-            particlesScores.append(scoreBase)
-
-        for _ in range(self.num_particles):
-            randomNum = np.random.uniform(0, scoreBase)
-            index = bisect_left(particlesScores, randomNum)
-
-            particle = self.particles[index]
-            particleSampled.append(particle)
-        
-        self.particles = []
-        for _ in range(self.num_particles):
-            particle = particleSampled[np.random.randint(0, len(particleSampled))]
-            x_offset = np.random.normal(0, 0.05)
-            y_offset = np.random.normal(0, 0.05)
-            theta_offset = np.random.normal(-np.pi/16, np.pi/16)
-            x_new = particle[0] + x_offset
-            y_new = particle[1] + y_offset
-            theta_new = particle[2] + theta_offset
-            self.particles.append((x_new, y_new, theta_new))
-            
-        self.particles = np.array(self.particles)
-        self.particle_weights = np.zeros(self.particles.shape[0])
+    def normalize_weights(self):
+        sum_weights = np.sum(self.particle_weights)
+        if sum_weights > 0:
+            self.particle_weights /= sum_weights
+        else:
+            # Handle case where all weights are zero
+            self.particle_weights = np.ones(self.num_particles) / self.num_particles
 
     
-    ## TODO: CHECK THIS METHOD
+    def resample_particles(self):
+        # Prepare arguments
+        self.normalize_weights()
+        weights = self.particle_weights.astype(np.float32)
+        particles = np.array(self.particles, dtype=np.float32).flatten()
+        resampled_particles = np.zeros_like(particles)
+
+        # Define the function signature
+        self.mcl_cpp.resample_particles.argtypes = [
+            ctypes.c_int,                      # num_particles
+            ctypes.c_int,                      # num_dimensions
+            ctypes.c_float,                    # theta_noise
+            ctypes.c_float,                    # trans_noise
+            ctypes.POINTER(ctypes.c_float),    # weights
+            ctypes.POINTER(ctypes.c_float),    # particles
+            ctypes.POINTER(ctypes.c_float)     # resampled_particles
+        ]
+        self.mcl_cpp.resample_particles.restype = ctypes.c_bool
+
+        # Convert numpy arrays to ctypes
+        weights_ctypes = weights.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+        particles_ctypes = particles.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+        resampled_ctypes = resampled_particles.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+
+        # Call the function
+        success = self.mcl_cpp.resample_particles(
+            self.num_particles,
+            self.num_dimensions,
+            np.float32((np.pi / 8)),
+            np.float32(0.1),
+            weights_ctypes,
+            particles_ctypes,
+            resampled_ctypes
+        )
+
+        if success:
+            self.particles = resampled_particles.reshape((self.num_particles, 3))
+            self.particle_weights = np.zeros(self.num_particles)
+        else:
+            self.get_logger().warn("C++ resampling failed. Falling back to Python version.")
+
+
     def motion_update(self, delta):
         dx, dy, dtheta = delta
 
@@ -313,74 +456,62 @@ class MCLNode(Node):
             theta_new = theta + delta_rot1_noisy + delta_rot2_noisy
 
             self.particles[i] = (x_new, y_new, theta_new)
-    
-    
+
     def broadcast_transform(self):
         try:
             x, y, theta = self.estimate_pose()
 
-            if not self.tf_buffer.can_transform('odom', 'base_link', rclpy.time.Time()):
-                self.get_logger().warn("Transform from odom to base_link not available yet")
-                return
+            # Get odom -> base_link transform
+            trans = self.tf_buffer.lookup_transform(
+                'odom',
+                'base_link',
+                rclpy.time.Time(),
+                timeout=rclpy.duration.Duration(seconds=1.0)
+            )
 
-            # Get latest odom -> base_link transform
-            trans = self.tf_buffer.lookup_transform('odom', 'base_link', rclpy.time.Time())
-            
-            # Get estimated pose in map (from particle cloud)
-            x, y, theta = self.estimate_pose()
-
-            # Compose transform from map -> base_link
-            T_map_base = tf_transformations.compose_matrix(
+            # Compose transformation: map -> base_link
+            map_to_base = tf_transformations.compose_matrix(
                 translate=[x, y, 0],
                 angles=[0, 0, theta]
             )
 
-            # Compose transform from odom -> base_link
-            trans_t = trans.transform.translation
-            trans_q = trans.transform.rotation
-            
-            quat = [trans_q.x, trans_q.y, trans_q.z, trans_q.w]
-            if np.any(np.isnan(quat)) or np.any(np.isinf(quat)):
-                self.get_logger().warn("Invalid quaternion in odom->base_link transform")
-                return
-            
-            T_odom_base = tf_transformations.compose_matrix(
-                translate=[trans_t.x, trans_t.y, trans_t.z],
-                angles=tf_transformations.euler_from_quaternion([trans_q.x, trans_q.y, trans_q.z, trans_q.w])
+            # Compose transformation: odom -> base_link (from TF)
+            trans_translation = trans.transform.translation
+            trans_rotation = trans.transform.rotation
+            odom_to_base = tf_transformations.compose_matrix(
+                translate=[trans_translation.x, trans_translation.y, trans_translation.z],
+                angles=tf_transformations.euler_from_quaternion([
+                    trans_rotation.x,
+                    trans_rotation.y,
+                    trans_rotation.z,
+                    trans_rotation.w
+                ])
             )
 
-            self.get_logger().info(f"Estimated pose: {x:.2f}, {y:.2f}, {theta:.2f}")
-            self.get_logger().info(f"Odom->base trans: {trans_t}")
+            # map -> odom = map -> base × inverse(odom -> base)
+            base_to_odom = np.linalg.inv(odom_to_base)
+            map_to_odom = np.dot(map_to_base, base_to_odom)
 
-            # map -> odom = map -> base_link × inverse(odom -> base_link)
-            # Note: We apply inverse of odom -> base_link first
-            #self.get_logger().info(f"Transform from odom to base_footprint: trans={trans.transform.translation}, rot={trans.transform.rotation}")
-            T_map_odom = np.matmul(T_map_base, np.linalg.inv(T_odom_base))
-            
-            # Extract translation and rotation
-            trans = tf_transformations.translation_from_matrix(T_map_odom)
-            rot = tf_transformations.quaternion_from_matrix(T_map_odom)
+            translation = map_to_odom[:3, 3]
+            rotation = tf_transformations.quaternion_from_matrix(map_to_odom)
 
-            # Create TransformStamped message for map -> odom
             t = TransformStamped()
             t.header.stamp = self.get_clock().now().to_msg()
             t.header.frame_id = 'map'
             t.child_frame_id = 'odom'
+            t.transform.translation.x = translation[0]
+            t.transform.translation.y = translation[1]
+            t.transform.translation.z = translation[2]
+            t.transform.rotation.x = rotation[0]
+            t.transform.rotation.y = rotation[1]
+            t.transform.rotation.z = rotation[2]
+            t.transform.rotation.w = rotation[3]
 
-            # Fill in translation and rotation for map -> odom transform
-            t.transform.translation.x = trans[0]
-            t.transform.translation.y = trans[1]
-            t.transform.translation.z = trans[2]
-            t.transform.rotation.x = rot[0]
-            t.transform.rotation.y = rot[1]
-            t.transform.rotation.z = rot[2]
-            t.transform.rotation.w = rot[3]
-
-            # Publish the transform
             self.tf_broadcaster.sendTransform(t)
 
         except Exception as e:
-            self.get_logger().warn(f"TF lookup failed: {str(e)}")
+            self.get_logger().warn(f"TF broadcast error: {str(e)}")
+
 
     def mcl_loop(self):
         if self.map is None:
@@ -410,6 +541,7 @@ class MCLNode(Node):
         self.publish_particles()
         self.broadcast_transform()
         self.publish_estimated_pose()
+        self.publish_clusters()
 
 
 def main(args=None):
