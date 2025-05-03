@@ -17,7 +17,8 @@ def generate_launch_description():
     pkg_urdf_share = FindPackageShare(pkg_urdf_name).find(pkg_urdf_name)
     default_model_path = os.path.join(pkg_urdf_share, "urdf", "robot.xacro")
     default_rviz_config_path = os.path.join(pkg__kinematics_share, "rviz", "visualizer.rviz")
-
+    aruco_marker_path = os.path.join(pkg_urdf_share, "urdf", "aruco_marker.xacro")
+    
     # Add the path for the Gazebo model (adjust based on where the saved model files are)
     gazebo_model_path = os.path.join(pkg_urdf_share, "models", "mcl_world")
 
@@ -105,6 +106,23 @@ def generate_launch_description():
                 "-file", os.path.join(gazebo_model_path, "model.sdf"),  # Replace with model.sdf path
                 "-entity", "wall_model",  # Correct entity name here
                 "-robot_namespace", "wall"
+            ],
+            output="screen"
+        ),
+        
+        Node(
+            package="gazebo_ros",
+            executable="spawn_entity.py",
+            arguments=[
+                "-file", aruco_marker_path,
+                "-entity", "aruco_marker",
+                "-robot_namespace", "aruco_marker",
+                "-x", "1.0",  # X position
+                "-y", "1.0",  # Y position
+                "-z", "0.2",  # Z position
+                "-R", "0",    # Roll
+                "-P", "0",    # Pitch
+                "-Y", "0"     # Yaw
             ],
             output="screen"
         ),
