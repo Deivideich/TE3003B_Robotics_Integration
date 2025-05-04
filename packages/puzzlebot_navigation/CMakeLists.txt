@@ -17,7 +17,7 @@ find_package(tf2_geometry_msgs REQUIRED)
 find_package(puzzlebot_interfaces REQUIRED)
 
 # Install directories
-install(DIRECTORY scripts rviz maps launch
+install(DIRECTORY scripts rviz maps launch resources
   DESTINATION share/${PROJECT_NAME})
 
 # Include every Python script within the src and scripts directory
