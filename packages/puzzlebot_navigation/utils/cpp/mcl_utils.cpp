@@ -16,6 +16,24 @@ bool resample_particles(
     float* weights, float* particles,
     float* resampled_particles) {
     try {
+
+        // // Calculate the mean of the weights
+        // float mean = 0.0f;
+        // for (int i = 0; i < num_particles; i++) {
+        //     mean += weights[i];
+        // }
+        // mean /= num_particles;
+
+        // // Calculate the standard deviation of the weights
+        // float variance = 0.0f;
+        // for (int i = 0; i < num_particles; i++) {
+        //     variance += (weights[i] - mean) * (weights[i] - mean);
+        // }
+        // variance /= num_particles;
+        // float std_dev = std::sqrt(variance);
+
+        // std::cout << "Standard Deviation of Weights: " << std_dev << std::endl;
+
         std::vector<float> particle_scores(num_particles);
         std::vector<std::vector<float>> particles_sampled;
         float score_base = 0.0;
@@ -27,7 +45,7 @@ bool resample_particles(
         }
 
         std::mt19937 gen(std::random_device{}());
-        std::normal_distribution<float> dart(0, score_base);
+        std::uniform_real_distribution<float> dart(0, score_base);
 
         // Perform resampling wheel (low variance resampling)
         for (int i = 0; i < num_particles; i++) {
