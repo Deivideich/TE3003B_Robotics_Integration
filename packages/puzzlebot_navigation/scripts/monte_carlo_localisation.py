@@ -30,7 +30,7 @@ class MCLNode(Node):
         self.declare_parameter('isDebug', False)
         self.declare_parameter('useClustering', False)
 
-        self.num_particles = 500
+        self.num_particles = 1000
         self.num_dimensions = 3
         self.particles = []        
         self.particle_weights = np.zeros(self.num_particles)
@@ -42,7 +42,7 @@ class MCLNode(Node):
         self.last_odom = None
         self.last_odom = None
         self.odom_received = False
-        self.odom_covariance = np.array([0.5, 0.5, 0.5, 0.5, 0.5, 0.5])
+        self.odom_covariance = np.array([0.01, 0.01, 0.01, 0.01, 0.01, 0.01])
         self.delta_motion = []
         
         self.last_scan = None
@@ -421,7 +421,7 @@ class MCLNode(Node):
             self.num_particles,
             self.num_dimensions,
             np.float32((np.pi / 8)),
-            np.float32(0.1),
+            np.float32(0.05),
             weights_ctypes,
             particles_ctypes,
             resampled_ctypes
@@ -442,9 +442,10 @@ class MCLNode(Node):
         
         trans_noise_coeff = self.odom_covariance[2] * abs(delta_trans) + self.odom_covariance[3] * abs(dtheta)
         rot_noise_coeff = self.odom_covariance[0] * abs(dtheta) + self.odom_covariance[1] * abs(delta_trans)
-
+        self.get_logger().info(f"{trans_noise_coeff}, {rot_noise_coeff}")
+        print("Debug")
         for i, (x, y, theta) in enumerate(self.particles):
-            delta_rot1 = self.angle_diff(delta_rot, theta)
+            delta_rot1 = self.angle_diff(math.atan2(dy, dx), theta)
             delta_rot2 = self.angle_diff(dtheta, delta_rot1)
 
             delta_trans_noisy = delta_trans + np.random.normal(0, trans_noise_coeff)
@@ -454,6 +455,7 @@ class MCLNode(Node):
             x_new = x + delta_trans_noisy * math.cos(theta + delta_rot1_noisy)
             y_new = y + delta_trans_noisy * math.sin(theta + delta_rot1_noisy)
             theta_new = theta + delta_rot1_noisy + delta_rot2_noisy
+            theta_new = (theta_new + math.pi) % (2 * math.pi) - math.pi
 
             self.particles[i] = (x_new, y_new, theta_new)
 
@@ -524,9 +526,11 @@ class MCLNode(Node):
         diffDistance = math.sqrt(self.delta_motion[0]**2 + self.delta_motion[1]**2)
         diffAngle = abs(self.delta_motion[2])*180.0/3.141592
         # self.get_logger().info(f"MCL: distance={diffDistance}, angle={diffAngle}")
-        if not(diffDistance < self.min_distance and diffAngle < self.min_angle):
+        if diffDistance > self.min_distance or diffAngle > self.min_angle:
             # self.get_logger().info(f"Updating particles")
             self.motion_update(self.delta_motion)       
+            self.last_odom = self.odom
+            
             self.sensor_update()
 
             self.predictionCounter += 1
@@ -535,12 +539,11 @@ class MCLNode(Node):
             if (neff < self.num_particles / 2) and (self.predictionCounter == self.repropagateCountNeeded):
                 self.resample_particles()
                 self.predictionCounter = 0
-            
-            self.last_odom = self.odom
-            
+        
+
         self.publish_particles()
         self.broadcast_transform()
-        self.publish_estimated_pose()
+        self.publish_estimated_pose()   
         self.publish_clusters()
 
 
