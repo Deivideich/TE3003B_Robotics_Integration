@@ -11,32 +11,20 @@
 
 #include "mcl_utils.h"
 
+
+// This function currently uses a CDF resample strategy in which a vector of scores
+// is built from the weights and then a random number is generated using a uniform
+// distribution. The index of the score that is greater than the random number is
+// used to select the particle. The selected particle is then added to a vector of
+// sampled particles. Finally, a random number is generated to select a particle
+// from the sampled particles and noise is added to the selected particle to create
+// all the resampled particles
+// TODO: Change the resampling strategy to a more efficient one
 bool resample_particles(
     int num_particles, int num_dimensions, float theta_noise, float trans_noise,
     float* weights, float* particles,
     float* resampled_particles) {
     try {
-
-        // Calculate the mean of the weights
-        // float mean = 0.0f;
-        // float max_weight = 0.0f;
-        // int max_index_ = 0;
-        // for (int i = 0; i < num_particles; i++) {
-        //     mean += weights[i] * weights[i];
-
-        // }
-        // mean /= num_particles;
-
-        // // Calculate the standard deviation of the weights
-        // float variance = 0.0f;
-        // for (int i = 0; i < num_particles; i++) {
-        //     variance += (weights[i] - mean) * (weights[i] - mean);
-        // }
-        // variance /= num_particles;
-        // float std_dev = std::sqrt(variance);
-
-        // std::cout << "Standard Deviation of Weights: " << std_dev << std::endl;
-
         std::vector<float> particle_scores(num_particles);
         std::vector<std::vector<float>> particles_sampled;
         float score_base = 0.0;
@@ -61,12 +49,12 @@ bool resample_particles(
             }
             particles_sampled.push_back(dump_particle);
         }
-
+        
         std::uniform_int_distribution<int> particle_index_distribution(0, num_particles - 1);
         std::normal_distribution<float> trans_noise_distribution(0, trans_noise);
         std::normal_distribution<float> theta_noise_distribution(-theta_noise, theta_noise);
 
-        // Add noise and write to resampled_particles
+        // Add gaussian noise and write to resampled_particles using uniform distribution to select the particle
         for (int i = 0; i < num_particles; i++) {
             std::size_t number = particle_index_distribution(gen);
             std::vector<float>& dump_particle = particles_sampled[number];
@@ -78,45 +66,6 @@ bool resample_particles(
             resampled_particles[i * num_dimensions + 1] = y;
             resampled_particles[i * num_dimensions + 2] = theta;
         }
-
-        // std::mt19937 gen(std::random_device{}());
-        // std::uniform_real_distribution<float> dart(0.0, 1.0 / float(num_particles));
-        // std::normal_distribution<float> trans_noise_distribution(0, trans_noise);
-        // std::normal_distribution<float> theta_noise_distribution(0, theta_noise);
-
-        // std::vector<int> indexes;
-
-        // float random_value = dart(gen);
-        // float c = weights[0];
-        // int i = 0;
-        // for (int m = 0; m < num_particles; m++) {
-        //     float u = random_value + float(m) * (1.0 / float(num_particles));
-            
-
-        //     while (u > c && i < num_particles - 1) {
-        //         // std::cout << "Debug i: " << i << " u: " << u << " c: " << c << std::endl;
-        //         c += weights[i++];
-        //     }
-
-        //     if (i >= num_particles) continue;
-        //     resampled_particles[m * num_dimensions + 0] = particles[i * num_dimensions + 0] + trans_noise_distribution(gen);
-        //     resampled_particles[m * num_dimensions + 1] = particles[i * num_dimensions + 1] + trans_noise_distribution(gen);
-        //     resampled_particles[m * num_dimensions + 2] = particles[i * num_dimensions + 2] + theta_noise_distribution(gen);
-            
-        //     float new_theta = resampled_particles[m * num_dimensions + 2];
-        //     // Normalize angle
-        //     while (new_theta > M_PI)
-        //         new_theta -= 2.0 * M_PI;
-        //     while (new_theta < -M_PI)
-        //         new_theta += 2.0 * M_PI;
-
-        //     resampled_particles[m * num_dimensions + 2] = new_theta;
-        //     weights[m] = 1.0 / num_particles;
-        //     indexes.push_back(i);
-
-        // }
-
-        // std::cout << "Indexes size: " << indexes.size() << std::endl;
             
         return true;
     } catch (const std::exception& e) {
@@ -125,6 +74,10 @@ bool resample_particles(
     }
 }
 
+// Function to calculate the weight of each particle based on the laser scan and map
+// This function uses the occupancy grid map and for ach of the particles it models 
+// the laser scan rays and checks if they hit an obstacle or not, depending on this
+// the weight of the particle is calculated to finally normalize these weights
 bool weight_particles(
     int* map_array, float* map_origin, int* map_shape, float map_resolution, 
     float* scan_angles, float* scan_ranges, int scan_size, float max_range,
@@ -138,48 +91,37 @@ bool weight_particles(
         int map_width = map_shape[1];
         float max_score = 0.0;
 
-        float max_read_angle = 0.0;
-        float max_read_range = 0.0;
-        
         for (size_t i = 0; i < num_particles; i++){
             float x = particles[i * num_dimensions + 0];
             float y = particles[i * num_dimensions + 1];
             float theta = particles[i * num_dimensions + 2];
             float particle_weight = 0.0;
             
+            // For each particle calculate the weight based on the laser scan hits and map occupancy grid
             for (size_t j = 0; j < scan_size; j++){
-                // std::cout << "Debug: " << i << " " << j << std::endl;
                 float angle = scan_angles[j];
                 float range = scan_ranges[j];
 
-                if (range > max_read_range){
-                    max_read_range = range;
-                }
-
-                if (angle > max_read_angle){
-                    max_read_angle = angle;
-                }
-
                 if (range >= max_range || range < 0.0) continue;
-                // std::cout << "Max range " << max_range << " Range " << range << " Angle " << angle << " Theta " << theta << " M_PI" << M_PI << std::endl;
                 float ray_angle = theta + angle;
-                // std::cout << "Debug: " << i << " " << j << " RAY_ANGLE" << ray_angle << std::endl;
+
                 // Normalize angle to [-π, π]
                 while (ray_angle > M_PI)
                 ray_angle -= 2.0f * M_PI;
                 while (ray_angle < -M_PI)
                 ray_angle += 2.0f * M_PI;
 
-
+                // Calculate the beam endpoint accding to the particle pose
                 float beam_x = x + range * std::cos(ray_angle);
                 float beam_y = y + range * std::sin(ray_angle);
 
+                // Check if the beam is within the map bounds
                 int map_x = int((beam_x - origin_x) / map_resolution);
                 int map_y = int((beam_y - origin_y) / map_resolution);
-                
                 if (map_x < 0 or map_x >= map_width or map_y < 0 or map_y >= map_height) continue;
-                int cell_value = map_array[map_y * map_width + map_x];  // Fixed indexing
-                // std::cout << "Debug: " << i << " " << j << " Cell value: " << cell_value << std::endl;
+                
+                // Check value of the map cell 
+                int cell_value = map_array[map_y * map_width + map_x];
                 particle_weight += cell_value >= 100 ? 1.0 : 0.0;
             }
     
@@ -195,6 +137,8 @@ bool weight_particles(
         if (sum > 0.0){
             for (size_t i = 0; i < num_particles; i++){
                 weights[i] /= sum;
+
+                // Find the maximum weight and corresponding particle
                 if (weights[i] > max_score){
                     max_score = weights[i];
     
@@ -210,8 +154,6 @@ bool weight_particles(
             }
         }
 
-        std::cout << "Max read angle: " << max_read_angle << std::endl;
-        std::cout << "Max read range: " << max_read_range << std::endl;
         return true;
     } catch (const std::exception& e) {
         std::cerr << "Exception in resample_particles: " << e.what() << std::endl;
