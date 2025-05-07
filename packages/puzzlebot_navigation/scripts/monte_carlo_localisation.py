@@ -19,9 +19,6 @@ import ament_index_python.packages
 package_prefix = ament_index_python.packages.get_package_prefix('puzzlebot_navigation')
 cpp_mcl = os.path.join(package_prefix, 'lib', 'puzzlebot_navigation', 'mcl_utils.so')
 
-# cpp_mcl = "/workspace/8voSemestre/TE3003B_Robotics_Integration/packages/puzzlebot_navigation/utils/cpp/mcl_utils.so"
-
-
 class MCLNode(Node):
     def __init__(self):
         super().__init__('mcl_node')
@@ -32,6 +29,7 @@ class MCLNode(Node):
 
         self.num_particles = 1000
         self.num_dimensions = 3
+        self.scale_rd_particles = 0.1
         self.particles = []        
         self.particle_weights = np.zeros(self.num_particles)
         self.cluster_dbscan = DBSCAN(eps=0.5, min_samples=int(self.num_particles * 0.05), metric='euclidean', n_jobs=-1)
@@ -123,11 +121,11 @@ class MCLNode(Node):
         self.get_logger().info(f"Initializing {self.num_particles} particles")
         if len(self.particles) == 0:
             self.get_logger().warn("No particles initialized!")
-        map_data = np.array(self.map.data).reshape((self.map.info.height, self.map.info.width))
+        self.map_data = np.array(self.map.data).reshape((self.map.info.height, self.map.info.width))
         resolution = self.map.info.resolution
         origin = self.map.info.origin
 
-        free_indices = np.argwhere(map_data == 0)  # 0 = free space
+        free_indices = np.argwhere(self.map_data == 0)  # 0 = free space
 
         chosen_indices = free_indices[np.random.choice(len(free_indices), self.num_particles)]
 
@@ -352,7 +350,19 @@ class MCLNode(Node):
         )
 
         if success:
-            self.particles = resampled_particles.reshape((self.num_particles, 3))
+            self.particles  = resampled_particles.reshape((self.num_particles, 3)).tolist()
+
+            free_indices = np.argwhere(self.map_data == 0)  # 0 = free space
+
+            for _ in range(int(self.num_particles * self.scale_rd_particles)):
+                particle_rd_idx = np.random.randint(0, self.num_particles)
+                new_y, new_x = free_indices[np.random.choice(len(free_indices))]
+                
+                new_x = new_x * self.map_resolution + self.map_origin.x
+                new_y = new_y * self.map_resolution + self.map_origin.y
+                new_theta = np.random.uniform(-np.pi, np.pi)
+                self.particles[particle_rd_idx] = (new_x, new_y, new_theta)
+
             self.particle_weights = np.ones(self.num_particles)
             self.particle_weights /= self.num_particles
         else:
