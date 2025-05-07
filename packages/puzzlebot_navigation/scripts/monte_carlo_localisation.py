@@ -18,18 +18,15 @@ import ament_index_python.packages
 
 package_prefix = ament_index_python.packages.get_package_prefix('puzzlebot_navigation')
 cpp_mcl = os.path.join(package_prefix, 'lib', 'puzzlebot_navigation', 'mcl_utils.so')
-
 class MCLNode(Node):
     def __init__(self):
         super().__init__('mcl_node')
         self.mcl_cpp = ctypes.CDLL(cpp_mcl)
-
-        self.declare_parameter('isDebug', False)
-        self.declare_parameter('useClustering', True)
+        self.declare_parameter('useClustering', False)
 
         self.num_particles = 1000
         self.num_dimensions = 3
-        self.scale_rd_particles = 0.1
+        self.scale_rd_particles = 0.0
         self.particles = []        
         self.particle_weights = np.zeros(self.num_particles)
         self.cluster_dbscan = DBSCAN(eps=0.5, min_samples=int(self.num_particles * 0.05), metric='euclidean', n_jobs=-1)
@@ -71,10 +68,13 @@ class MCLNode(Node):
         #### TIMER ####
         self.timer = self.create_timer(0.05, self.mcl_loop)
 
-        ### DEBUG ####
-        if self.get_parameter('isDebug').get_parameter_value().bool_value:
-            self.get_logger().info("Debug mode is ON")
-            self.create_timer(0.1, self.publish_real_pose)
+        self.useClustering = self.get_parameter('useClustering').get_parameter_value().bool_value
+        
+        self.get_logger().info("MCL Node initialized")
+        self.get_logger().info(f"Using C++ MCL library: {cpp_mcl}")
+        self.get_logger().info(f"Using clustering: {self.useClustering}")
+    
+    
 
 
     def publish_estimated_pose(self):
@@ -284,7 +284,7 @@ class MCLNode(Node):
 
     #TODO: this function is good but slow, DBSSCAN compute wise is not efficient, need to find a better way to cluster
     def estimate_pose(self):
-        if self.get_parameter('useClustering').get_parameter_value().bool_value:
+        if self.useClustering:
             clusters = self.cluster_dbscan.fit(self.particles)
             unique_labels = set(clusters.labels_)
             if -1 in unique_labels:
@@ -308,7 +308,6 @@ class MCLNode(Node):
                 if np.linalg.norm(cluster_center - maxParticle) < minDistance and np.linalg.norm(cluster_center - maxParticle) < self.min_cluster_distance:
                     minDistance = np.linalg.norm(cluster_center - maxParticle)
                     bestCluster = np.mean(cluster_particles, axis=0)
-                    self.get_logger().info(f"Cluster center: {cluster_center}")
             
             return bestCluster if bestCluster is not None else maxParticle     
         if hasattr(self, 'maxParticle'):
@@ -316,7 +315,6 @@ class MCLNode(Node):
         return np.array([0.0, 0.0, 0.0])
     
     def resample_particles(self):
-        self.get_logger().info("Resampling particles")
         # Prepare arguments
         weights = self.particle_weights.astype(np.float32)
         particles = np.array(self.particles, dtype=np.float32).flatten()
