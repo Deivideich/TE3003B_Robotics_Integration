@@ -17,10 +17,13 @@ bool resample_particles(
     float* resampled_particles) {
     try {
 
-        // // Calculate the mean of the weights
+        // Calculate the mean of the weights
         // float mean = 0.0f;
+        // float max_weight = 0.0f;
+        // int max_index_ = 0;
         // for (int i = 0; i < num_particles; i++) {
-        //     mean += weights[i];
+        //     mean += weights[i] * weights[i];
+
         // }
         // mean /= num_particles;
 
@@ -76,6 +79,45 @@ bool resample_particles(
             resampled_particles[i * num_dimensions + 2] = theta;
         }
 
+        // std::mt19937 gen(std::random_device{}());
+        // std::uniform_real_distribution<float> dart(0.0, 1.0 / float(num_particles));
+        // std::normal_distribution<float> trans_noise_distribution(0, trans_noise);
+        // std::normal_distribution<float> theta_noise_distribution(0, theta_noise);
+
+        // std::vector<int> indexes;
+
+        // float random_value = dart(gen);
+        // float c = weights[0];
+        // int i = 0;
+        // for (int m = 0; m < num_particles; m++) {
+        //     float u = random_value + float(m) * (1.0 / float(num_particles));
+            
+
+        //     while (u > c && i < num_particles - 1) {
+        //         // std::cout << "Debug i: " << i << " u: " << u << " c: " << c << std::endl;
+        //         c += weights[i++];
+        //     }
+
+        //     if (i >= num_particles) continue;
+        //     resampled_particles[m * num_dimensions + 0] = particles[i * num_dimensions + 0] + trans_noise_distribution(gen);
+        //     resampled_particles[m * num_dimensions + 1] = particles[i * num_dimensions + 1] + trans_noise_distribution(gen);
+        //     resampled_particles[m * num_dimensions + 2] = particles[i * num_dimensions + 2] + theta_noise_distribution(gen);
+            
+        //     float new_theta = resampled_particles[m * num_dimensions + 2];
+        //     // Normalize angle
+        //     while (new_theta > M_PI)
+        //         new_theta -= 2.0 * M_PI;
+        //     while (new_theta < -M_PI)
+        //         new_theta += 2.0 * M_PI;
+
+        //     resampled_particles[m * num_dimensions + 2] = new_theta;
+        //     weights[m] = 1.0 / num_particles;
+        //     indexes.push_back(i);
+
+        // }
+
+        // std::cout << "Indexes size: " << indexes.size() << std::endl;
+            
         return true;
     } catch (const std::exception& e) {
         std::cerr << "Exception in resample_particles: " << e.what() << std::endl;
@@ -95,6 +137,9 @@ bool weight_particles(
         int map_height = map_shape[0];
         int map_width = map_shape[1];
         float max_score = 0.0;
+
+        float max_read_angle = 0.0;
+        float max_read_range = 0.0;
         
         for (size_t i = 0; i < num_particles; i++){
             float x = particles[i * num_dimensions + 0];
@@ -106,32 +151,67 @@ bool weight_particles(
                 // std::cout << "Debug: " << i << " " << j << std::endl;
                 float angle = scan_angles[j];
                 float range = scan_ranges[j];
-                if (range >= max_range || range < 0.0) continue;
 
-                float beam_x = x + range * std::cos(theta + angle);
-                float beam_y = y + range * std::sin(theta + angle);
+                if (range > max_read_range){
+                    max_read_range = range;
+                }
+
+                if (angle > max_read_angle){
+                    max_read_angle = angle;
+                }
+
+                if (range >= max_range || range < 0.0) continue;
+                // std::cout << "Max range " << max_range << " Range " << range << " Angle " << angle << " Theta " << theta << " M_PI" << M_PI << std::endl;
+                float ray_angle = theta + angle;
+                // std::cout << "Debug: " << i << " " << j << " RAY_ANGLE" << ray_angle << std::endl;
+                // Normalize angle to [-π, π]
+                while (ray_angle > M_PI)
+                ray_angle -= 2.0f * M_PI;
+                while (ray_angle < -M_PI)
+                ray_angle += 2.0f * M_PI;
+
+
+                float beam_x = x + range * std::cos(ray_angle);
+                float beam_y = y + range * std::sin(ray_angle);
 
                 int map_x = int((beam_x - origin_x) / map_resolution);
                 int map_y = int((beam_y - origin_y) / map_resolution);
                 
                 if (map_x < 0 or map_x >= map_width or map_y < 0 or map_y >= map_height) continue;
                 int cell_value = map_array[map_y * map_width + map_x];  // Fixed indexing
-                
-                
-                particle_weight += cell_value >= 100 ? float(cell_value / 100.0) : 0.0;
+                // std::cout << "Debug: " << i << " " << j << " Cell value: " << cell_value << std::endl;
+                particle_weight += cell_value >= 100 ? 1.0 : 0.0;
             }
     
-            weights[i] = particle_weight / scan_size;
-            
-            if (particle_weight > max_score){
-                max_score = particle_weight;
+            weights[i] = particle_weight;
+        }
 
-                max_particle[0] = x;
-                max_particle[1] = y;
-                max_particle[2] = theta;
+        // Normalize weights
+        float sum = 0.0;
+        for (size_t i = 0; i < num_particles; i++){
+            sum += weights[i];
+        }
+
+        if (sum > 0.0){
+            for (size_t i = 0; i < num_particles; i++){
+                weights[i] /= sum;
+                if (weights[i] > max_score){
+                    max_score = weights[i];
+    
+                    max_particle[0] = particles[i * num_dimensions + 0];
+                    max_particle[1] = particles[i * num_dimensions + 1];
+                    max_particle[2] = particles[i * num_dimensions + 2];
+                }
+            }
+        } else {
+            std::cout << "Warning: All weights are zero!" << std::endl;
+            for (size_t i = 0; i < num_particles; i++){
+                weights[i] = 1.0 / num_particles;
             }
         }
 
+        std::cout << "Max read angle: " << max_read_angle << std::endl;
+        std::cout << "Max read range: " << max_read_range << std::endl;
         return true;
     } catch (const std::exception& e) {
         std::cerr << "Exception in resample_particles: " << e.what() << std::endl;
@@ -157,6 +237,22 @@ int main(int argc, char** argv) {
         weights[i] = 1.0f;
         for (int j = 0; j < num_dimensions; j++) {
             particles[i * num_dimensions + j] = static_cast<float>(i + j);
+        }
+    }
+
+    // normalize weights
+    float sum = 0.0f;
+    for (int i = 0; i < num_particles; i++) {
+        sum += weights[i];
+    }
+    if (sum > 0.0f) {
+        for (int i = 0; i < num_particles; i++) {
+            weights[i] /= sum;
+        }
+    } else {
+        std::cout << "Warning: All weights are zero!" << std::endl;
+        for (int i = 0; i < num_particles; i++) {
+            weights[i] = 1.0f / num_particles;
         }
     }
 
