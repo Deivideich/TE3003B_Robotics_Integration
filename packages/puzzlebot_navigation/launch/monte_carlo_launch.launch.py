@@ -46,6 +46,10 @@ def generate_launch_description():
             name="use_gazebo_odom", default_value="false",
             description="Whether to include Gazebo odometry"
         ),
+        DeclareLaunchArgument(
+            name="use_mcl_clustering", default_value="false",
+            description="Whether to use clustering in MCL algorithm"
+        ),
 
         # Launch Gazebo
         IncludeLaunchDescription(
@@ -163,6 +167,9 @@ def generate_launch_description():
             executable="monte_carlo_localisation.py",
             name="monte_carlo_localisation",
             output="screen",
+            parameters=[
+                {"useClustering": LaunchConfiguration("use_mcl_clustering")}
+            ],
         ),
         
     ])
