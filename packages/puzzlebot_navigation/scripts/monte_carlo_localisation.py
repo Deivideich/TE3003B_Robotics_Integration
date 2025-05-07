@@ -42,7 +42,7 @@ class MCLNode(Node):
         self.last_odom = None
         self.last_odom = None
         self.odom_received = False
-        self.odom_covariance = np.array([0.01, 0.01, 0.01, 0.01, 0.01, 0.01])
+        self.odom_covariance = np.array([0.2, 0.2, 0.2, 0.2, 0.2, 0.2])
         self.delta_motion = []
         
         self.last_scan = None
@@ -263,14 +263,18 @@ class MCLNode(Node):
                 return
 
             maxScore = 0.0
+            self.get_logger().info("    Sensor update")
+
             
-            map_array = np.array(self.map.data, dtype=np.int8)
+            map_array = np.array(self.map.data, dtype=np.int32)
             map_origin = np.array([self.map_origin.x, self.map_origin.y], dtype=np.float32)
             map_shape = np.array([self.map_height, self.map_width], dtype=np.int32)
-            scan_angles = np.arange(self.scan.angle_min, self.scan.angle_max, self.scan.angle_increment)
+            scan_angles = np.arange(self.scan.angle_min, self.scan.angle_max, self.scan.angle_increment, dtype=np.float32)
             scan_ranges = np.array(self.scan.ranges)
             max_range = self.scan.range_max
 
+            self.get_logger().info(f"Scan ranges size: {len(scan_ranges)}")
+            self.get_logger().info(f"Scan angles size: {len(scan_angles)}")
             
             particles = np.array(self.particles, dtype=np.float32).flatten()
             output_weights = np.zeros(self.num_particles, dtype=np.float32)
@@ -383,22 +387,13 @@ class MCLNode(Node):
             return np.array([float(self.maxParticle[0]), float(self.maxParticle[1]), float(self.maxParticle[2])])
         return np.array([0.0, 0.0, 0.0])
     
-    def normalize_weights(self):
-        sum_weights = np.sum(self.particle_weights)
-        if sum_weights > 0:
-            self.particle_weights /= sum_weights
-        else:
-            # Handle case where all weights are zero
-            self.particle_weights = np.ones(self.num_particles) / self.num_particles
-
-    
     def resample_particles(self):
+        self.get_logger().info("Resampling particles")
         # Prepare arguments
-        self.normalize_weights()
         weights = self.particle_weights.astype(np.float32)
         particles = np.array(self.particles, dtype=np.float32).flatten()
         resampled_particles = np.zeros_like(particles)
-
+        
         # Define the function signature
         self.mcl_cpp.resample_particles.argtypes = [
             ctypes.c_int,                      # num_particles
@@ -420,7 +415,7 @@ class MCLNode(Node):
         success = self.mcl_cpp.resample_particles(
             self.num_particles,
             self.num_dimensions,
-            np.float32((np.pi / 8)),
+            np.float32((np.pi / 16)),
             np.float32(0.05),
             weights_ctypes,
             particles_ctypes,
@@ -429,7 +424,8 @@ class MCLNode(Node):
 
         if success:
             self.particles = resampled_particles.reshape((self.num_particles, 3))
-            self.particle_weights = np.zeros(self.num_particles)
+            self.particle_weights = np.ones(self.num_particles)
+            self.particle_weights /= self.num_particles
         else:
             self.get_logger().warn("C++ resampling failed. Falling back to Python version.")
 
@@ -442,8 +438,7 @@ class MCLNode(Node):
         
         trans_noise_coeff = self.odom_covariance[2] * abs(delta_trans) + self.odom_covariance[3] * abs(dtheta)
         rot_noise_coeff = self.odom_covariance[0] * abs(dtheta) + self.odom_covariance[1] * abs(delta_trans)
-        self.get_logger().info(f"{trans_noise_coeff}, {rot_noise_coeff}")
-        print("Debug")
+
         for i, (x, y, theta) in enumerate(self.particles):
             delta_rot1 = self.angle_diff(math.atan2(dy, dx), theta)
             delta_rot2 = self.angle_diff(dtheta, delta_rot1)
@@ -532,11 +527,11 @@ class MCLNode(Node):
             self.last_odom = self.odom
             
             self.sensor_update()
-
+            
             self.predictionCounter += 1
             neff = 1.0 / np.sum(np.square(self.particle_weights))
-
-            if (neff < self.num_particles / 2) and (self.predictionCounter == self.repropagateCountNeeded):
+            self.get_logger().info(f"Effective particles: {neff}")
+            if (neff > self.num_particles * 0.1) and (self.predictionCounter >= self.repropagateCountNeeded):
                 self.resample_particles()
                 self.predictionCounter = 0
         
