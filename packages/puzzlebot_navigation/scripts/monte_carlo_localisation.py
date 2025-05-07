@@ -2,7 +2,6 @@
 import math
 import numpy as np
 import ctypes
-import pathlib
 from sklearn.cluster import DBSCAN
 
 import rclpy
@@ -13,13 +12,14 @@ from geometry_msgs.msg import Pose, PoseWithCovarianceStamped, TransformStamped,
 import tf2_ros
 from tf2_ros import TransformBroadcaster
 import tf_transformations
-from visualization_msgs.msg import Marker, MarkerArray
 
-parent_path = str(pathlib.Path(__file__).parent.resolve())
+import os
+import ament_index_python.packages
 
-cpp_mcl = f"{parent_path}/../utils/cpp/mcl_utils.so"
+package_prefix = ament_index_python.packages.get_package_prefix('puzzlebot_navigation')
+cpp_mcl = os.path.join(package_prefix, 'lib', 'puzzlebot_navigation', 'mcl_utils.so')
 
-cpp_mcl = "/workspace/8voSemestre/TE3003B_Robotics_Integration/packages/puzzlebot_navigation/utils/cpp/mcl_utils.so"
+# cpp_mcl = "/workspace/8voSemestre/TE3003B_Robotics_Integration/packages/puzzlebot_navigation/utils/cpp/mcl_utils.so"
 
 
 class MCLNode(Node):
@@ -28,13 +28,13 @@ class MCLNode(Node):
         self.mcl_cpp = ctypes.CDLL(cpp_mcl)
 
         self.declare_parameter('isDebug', False)
-        self.declare_parameter('useClustering', False)
+        self.declare_parameter('useClustering', True)
 
         self.num_particles = 1000
         self.num_dimensions = 3
         self.particles = []        
         self.particle_weights = np.zeros(self.num_particles)
-        self.cluster_dbscan = DBSCAN(eps=0.5, min_samples=self.num_particles//10)
+        self.cluster_dbscan = DBSCAN(eps=0.5, min_samples=int(self.num_particles * 0.05), metric='euclidean', n_jobs=-1)
         
         self.map = None
         self.map_received = False
@@ -63,7 +63,6 @@ class MCLNode(Node):
         self.scan_pub = self.create_publisher(LaserScan, '/scan_view', 10)
         self.pose_pub = self.create_publisher(PoseWithCovarianceStamped, '/mcl_pose', 10)
         self.particles_pub = self.create_publisher(PoseArray, '/particle_cloud', 10)
-        self.clusters_pub = self.create_publisher(MarkerArray, '/clusters', 10)
         
         #### SUBSCRIBERS ####
         self.create_subscription(OccupancyGrid, '/map', self.map_callback, 10)
@@ -77,86 +76,22 @@ class MCLNode(Node):
         if self.get_parameter('isDebug').get_parameter_value().bool_value:
             self.get_logger().info("Debug mode is ON")
             self.create_timer(0.1, self.publish_real_pose)
-            
-
-    def publish_clusters(self):
-        if self.get_parameter('useClustering').get_parameter_value().bool_value:
-            clusters = self.cluster_dbscan.fit(self.particles)
-            unique_labels = set(clusters.labels_)
-            if -1 in unique_labels:
-                unique_labels.remove(-1)
-            if len(unique_labels) == 0:
-                self.get_logger().warn("No clusters found")
-                return
-            self.get_logger().info(f"Found {len(unique_labels)} clusters")
-            marker_array = MarkerArray()
-            for label in unique_labels:
-                if label == -1:
-                    continue
-                color = np.random.rand(3)
-                cluster_indices = np.where(clusters.labels_ == label)[0]
-                cluster_particles = [self.particles[i] for i in cluster_indices]
-                cluster_center = np.mean(cluster_particles, axis=0)
-                for i in range(len(cluster_particles)):
-                    marker = Marker()
-                    marker.header.frame_id = 'map'
-                    marker.header.stamp = self.get_clock().now().to_msg()
-                    marker.ns = 'clusters'
-                    marker.id = int(i)
-                    marker.type = Marker.SPHERE
-                    marker.action = Marker.ADD
-                    marker.pose.position.x = float(cluster_particles[i][0])
-                    marker.pose.position.y = float(cluster_particles[i][1])
-                    marker.pose.position.z = 0.0
-                    marker.pose.orientation.x = 0.0
-                    marker.pose.orientation.y = 0.0
-                    marker.pose.orientation.z = 0.0
-                    marker.pose.orientation.w = 1.0
-                    marker.scale.x = 0.1
-                    marker.scale.y = 0.1
-                    marker.scale.z = 0.1
-                    marker.color.r = color[0]
-                    marker.color.g = color[1]
-                    marker.color.b = color[2]
-                    marker.color.a = 1.0
-                    marker_array.markers.append(marker)
-                cluster_marker = Marker()
-                cluster_marker.header.frame_id = 'map'
-                cluster_marker.header.stamp = self.get_clock().now().to_msg()
-                cluster_marker.ns = 'clusters'
-                cluster_marker.id = int(label)
-                cluster_marker.type = Marker.SPHERE
-                cluster_marker.action = Marker.ADD
-                cluster_marker.pose.position.x = float(cluster_center[0])
-                cluster_marker.pose.position.y = float(cluster_center[1])
-                cluster_marker.pose.position.z = 0.0
-                cluster_marker.pose.orientation.x = 0.0
-                cluster_marker.pose.orientation.y = 0.0
-                cluster_marker.pose.orientation.z = 0.0
-                cluster_marker.pose.orientation.w = 1.0
-                cluster_marker.scale.x = 0.2
-                cluster_marker.scale.y = 0.2
-                cluster_marker.scale.z = 0.2
-                cluster_marker.color.r = color[0]
-                cluster_marker.color.g = color[1]
-                cluster_marker.color.b = color[2]
-                cluster_marker.color.a = 1.0
-                marker_array.markers.append(cluster_marker)
-            self.clusters_pub.publish(marker_array)
 
 
     def publish_estimated_pose(self):
-        est = self.estimate_pose()
+        x, y, theta = self.estimate_pose()
+
+        x, y, theta = float(x), float(y), float(theta)
 
         msg = PoseWithCovarianceStamped()
         msg.header.stamp = self.get_clock().now().to_msg()
         msg.header.frame_id = 'map'
 
-        msg.pose.pose.position.x = est[0]
-        msg.pose.pose.position.y = est[1]
+        msg.pose.pose.position.x = x
+        msg.pose.pose.position.y = y
         msg.pose.pose.position.z = 0.0
 
-        q = tf_transformations.quaternion_from_euler(0, 0, est[2])
+        q = tf_transformations.quaternion_from_euler(0, 0, theta)
         msg.pose.pose.orientation.x = q[0]
         msg.pose.pose.orientation.y = q[1]
         msg.pose.pose.orientation.z = q[2]
@@ -213,7 +148,6 @@ class MCLNode(Node):
         pa.header.frame_id = 'map'  # This should match your fixed frame in RViz
 
         for x, y, theta in self.particles:
-            # self.get_logger().info(f"Particle: x={x}, y={y}, theta={theta}")
             pose = Pose()
             pose.position.x = float(x)
             pose.position.y = float(y)
@@ -256,15 +190,11 @@ class MCLNode(Node):
         # Save delta odom
         self.delta_motion = self.compute_odometry_delta(self.last_odom, self.odom)
 
-    ## TODO: CHECK THIS METHOD
+
     def sensor_update(self):
         try:
             if not self.scan_received:
                 return
-
-            maxScore = 0.0
-            self.get_logger().info("    Sensor update")
-
             
             map_array = np.array(self.map.data, dtype=np.int32)
             map_origin = np.array([self.map_origin.x, self.map_origin.y], dtype=np.float32)
@@ -273,8 +203,7 @@ class MCLNode(Node):
             scan_ranges = np.array(self.scan.ranges)
             max_range = self.scan.range_max
 
-            self.get_logger().info(f"Scan ranges size: {len(scan_ranges)}")
-            self.get_logger().info(f"Scan angles size: {len(scan_angles)}")
+            assert len(scan_ranges) == len(scan_angles), "Scan ranges and angles must have the same size"
             
             particles = np.array(self.particles, dtype=np.float32).flatten()
             output_weights = np.zeros(self.num_particles, dtype=np.float32)
@@ -354,6 +283,7 @@ class MCLNode(Node):
         diff = a - b
         return (diff + np.pi) % (2 * np.pi) - np.pi
 
+    #TODO: this function is good but slow, DBSSCAN compute wise is not efficient, need to find a better way to cluster
     def estimate_pose(self):
         if self.get_parameter('useClustering').get_parameter_value().bool_value:
             clusters = self.cluster_dbscan.fit(self.particles)
@@ -361,28 +291,27 @@ class MCLNode(Node):
             if -1 in unique_labels:
                 unique_labels.remove(-1)
             if len(unique_labels) == 0:
-                self.get_logger().warn("No clusters found")
                 if hasattr(self, 'maxParticle'):
                     return np.array([float(self.maxParticle[0]), float(self.maxParticle[1]), float(self.maxParticle[2])])
                 else: 
                     return np.array([0.0, 0.0, 0.0])
                 
-                
-            self.get_logger().info(f"Found {len(unique_labels)} clusters")
-            maxWeight = 0.0
+            maxParticle = self.maxParticle if hasattr(self, 'maxParticle') else np.array([0.0, 0.0, 0.0])
+            minDistance = 1000000
             bestCluster = None
+            # Look for maxParticle in clusters
             for label in unique_labels:
+                if label == -1:
+                    continue
                 cluster_indices = np.where(clusters.labels_ == label)[0]
                 cluster_particles = [self.particles[i] for i in cluster_indices]
-                cluster_weights = [self.particle_weights[i] for i in cluster_indices]
                 cluster_center = np.mean(cluster_particles, axis=0)
-                cluster_mean = np.mean(cluster_weights, axis=0)
-                if cluster_mean > maxWeight:
-                    bestCluster = cluster_center
-                    maxWeight = cluster_mean
+                if np.linalg.norm(cluster_center - maxParticle) < minDistance:
+                    minDistance = np.linalg.norm(cluster_center - maxParticle)
+                    bestCluster = np.mean(cluster_particles, axis=0)
+                    self.get_logger().info(f"Cluster center: {cluster_center}")
             
-            if bestCluster != None:            
-                return np.array([float(bestCluster[0]), float(bestCluster[1]), float(bestCluster[2])])
+            return bestCluster if bestCluster is not None else maxParticle     
         if hasattr(self, 'maxParticle'):
             return np.array([float(self.maxParticle[0]), float(self.maxParticle[1]), float(self.maxParticle[2])])
         return np.array([0.0, 0.0, 0.0])
@@ -415,8 +344,8 @@ class MCLNode(Node):
         success = self.mcl_cpp.resample_particles(
             self.num_particles,
             self.num_dimensions,
-            np.float32((np.pi / 16)),
-            np.float32(0.05),
+            np.float32((np.pi / 32)),
+            np.float32(0.04),
             weights_ctypes,
             particles_ctypes,
             resampled_ctypes
@@ -457,6 +386,8 @@ class MCLNode(Node):
     def broadcast_transform(self):
         try:
             x, y, theta = self.estimate_pose()
+
+            x, y, theta = float(x), float(y), float(theta)
 
             # Get odom -> base_link transform
             trans = self.tf_buffer.lookup_transform(
@@ -520,9 +451,8 @@ class MCLNode(Node):
         
         diffDistance = math.sqrt(self.delta_motion[0]**2 + self.delta_motion[1]**2)
         diffAngle = abs(self.delta_motion[2])*180.0/3.141592
-        # self.get_logger().info(f"MCL: distance={diffDistance}, angle={diffAngle}")
+
         if diffDistance > self.min_distance or diffAngle > self.min_angle:
-            # self.get_logger().info(f"Updating particles")
             self.motion_update(self.delta_motion)       
             self.last_odom = self.odom
             
@@ -530,7 +460,7 @@ class MCLNode(Node):
             
             self.predictionCounter += 1
             neff = 1.0 / np.sum(np.square(self.particle_weights))
-            self.get_logger().info(f"Effective particles: {neff}")
+
             if (neff > self.num_particles * 0.1) and (self.predictionCounter >= self.repropagateCountNeeded):
                 self.resample_particles()
                 self.predictionCounter = 0
@@ -539,7 +469,6 @@ class MCLNode(Node):
         self.publish_particles()
         self.broadcast_transform()
         self.publish_estimated_pose()   
-        self.publish_clusters()
 
 
 def main(args=None):

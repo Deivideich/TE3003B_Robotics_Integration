@@ -23,6 +23,9 @@
   <depend>sensor_msgs</depend>
   <depend>puzzlebot_interfaces</depend>
   <depend>puzzlebot_kinematics</depend>
+
+  <exec_depend>ament_index_python</exec_depend>
+
   
   <export>
     <build_type>ament_cmake</build_type>
