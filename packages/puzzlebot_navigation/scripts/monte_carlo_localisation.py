@@ -33,6 +33,7 @@ class MCLNode(Node):
         self.particles = []        
         self.particle_weights = np.zeros(self.num_particles)
         self.cluster_dbscan = DBSCAN(eps=0.5, min_samples=int(self.num_particles * 0.05), metric='euclidean', n_jobs=-1)
+        self.min_cluster_distance = 0.5
         
         self.map = None
         self.map_received = False
@@ -304,7 +305,7 @@ class MCLNode(Node):
                 cluster_indices = np.where(clusters.labels_ == label)[0]
                 cluster_particles = [self.particles[i] for i in cluster_indices]
                 cluster_center = np.mean(cluster_particles, axis=0)
-                if np.linalg.norm(cluster_center - maxParticle) < minDistance:
+                if np.linalg.norm(cluster_center - maxParticle) < minDistance and np.linalg.norm(cluster_center - maxParticle) < self.min_cluster_distance:
                     minDistance = np.linalg.norm(cluster_center - maxParticle)
                     bestCluster = np.mean(cluster_particles, axis=0)
                     self.get_logger().info(f"Cluster center: {cluster_center}")
