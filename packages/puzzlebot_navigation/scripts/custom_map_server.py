@@ -24,7 +24,7 @@ class SimpleMapServer(Node):
         self.publisher = self.create_publisher(OccupancyGrid, '/map', 10)
 
         # Publish at 1Hz
-        self.timer = self.create_timer(1.0, self.publish_map)
+        self.timer = self.create_timer(0.1, self.publish_map)
         self.get_logger().info(f'Publishing map from: {yaml_path}')
 
     def load_map_from_yaml(self, yaml_path):

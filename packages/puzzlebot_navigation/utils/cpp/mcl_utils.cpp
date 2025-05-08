@@ -1,5 +1,6 @@
 // #define DEBUG_RESAMPLE
 // #define DEBUG_WEIGHT
+// #define DEBUG_TS_MAP
 
 #include <iostream>
 #include <stdio.h>
@@ -161,6 +162,185 @@ bool weight_particles(
     }
 }
 
+bool ts_map_update(int x1, int y1, int slam_points, float* scan_ranges, int max_range,
+                   int* map_array, float TS_MAP_SCALE, double* x_slam, double* y_slam,
+                   int TS_HOLE_WIDTH, double origin_x, double origin_y, double x, double y, float theta, int quality,
+                   int TS_NO_OBSTACLE, int TS_OBSTACLE, int TS_MAP_SIZE) {
+    double c , s , q;
+    double x2p , y2p;
+    int i, x2, y2, xp, yp, value;
+    
+    double add, dist;
+    // check all variables with print
+    // printf("x1: %d y1: %d\n", x1, y1);
+    // fflush(stdout);
+    // printf("slam_points: %d\n", slam_points);
+    // printf("scan_ranges: ");
+    // for (i = 0; i < slam_points; i++) {
+    //     printf("%f ", scan_ranges[i]);
+    // }
+    // printf("\n");
+    // printf("max_range: %d\n", max_range);
+    // printf("TS_MAP_SCALE: %f\n", TS_MAP_SCALE);
+    // printf("x_slam: ");
+    // for (i = 0; i < slam_points; i++) {
+    //     printf("%f ", x_slam[i]);
+    // }
+    // printf("\n");
+    // printf("y_slam: ");
+    // for (i = 0; i < slam_points; i++) {
+    //     printf("%f ", y_slam[i]);
+    // }
+    // printf("\n");
+    // printf("TS_HOLE_WIDTH: %d\n", TS_HOLE_WIDTH);
+    // printf("origin_x: %f\n", origin_x);
+    // printf("origin_y: %f\n", origin_y);
+    // printf("x: %f\n", x);
+    // printf("y: %f\n", y);
+    // printf("theta: %f\n", theta);
+    // printf("quality: %d\n", quality);
+    // printf("TS_NO_OBSTACLE: %d\n", TS_NO_OBSTACLE);
+    // fflush(stdout);
+    // printf("TS_OBSTACLE: %d\n", TS_OBSTACLE);
+    // fflush(stdout);
+    // printf("TS_MAP_SIZE: %d\n", TS_MAP_SIZE);
+    // fflush(stdout);
+    // printf("map_array: ");
+    // for (i = 0; i < TS_MAP_SIZE * TS_MAP_SIZE; i++) {
+    //     printf("%d ", map_array[i]);
+    // }
+    // printf("len map_array: %ld\n", sizeof(map_array));
+    // fflush(stdout);
+
+
+    c = cos(theta);
+    s = sin(theta);
+    try{
+        for(int i = 0; i != slam_points; i++) {
+            printf("flag 1\n");
+            x2p = c * x_slam[i] - s * y_slam[i];
+            y2p = s * x_slam[i] + c * y_slam[i];
+            xp = (int)floor(origin_x + (x + x2p) * TS_MAP_SCALE + 0.5);
+            yp = (int)floor(origin_y + (y + y2p) * TS_MAP_SCALE + 0.5);
+            dist = sqrt(x2p * x2p + y2p * y2p);
+            add = TS_HOLE_WIDTH / 2 / dist;
+            printf("Index %d: x2p=%.4f y2p=%.4f dist=%.4f\n", i, x2p, y2p, dist);
+            fflush(stdout);
+            x2p *= TS_MAP_SCALE * (1 + add);
+            y2p *= TS_MAP_SCALE * (1 + add);
+            x2 = (int)floor(origin_x + x * TS_MAP_SCALE + x2p + 0.5);
+            y2 = (int)floor(origin_y + y * TS_MAP_SCALE + y2p + 0.5);
+            if((int)scan_ranges[i] == max_range){
+                q = quality / 2;
+                value = TS_NO_OBSTACLE;
+            } else {
+                q = quality;
+                value = TS_OBSTACLE;
+            }
+            printf ("flag 3\n");
+            ts_map_laser_ray(map_array, x1, y1, x2, y2, xp, yp, value, q, TS_MAP_SIZE, TS_NO_OBSTACLE);
+        }
+
+        return true;
+    } catch (const std::exception& e) {
+        std::cerr << "Exception in ts_map_update: " << e.what() << std::endl;
+        return false;
+    }
+
+}
+
+void ts_map_laser_ray(int* map_array, int x1, int y1, int x2, int y2, int xp, int yp,
+                      int value, int alpha, int TS_MAP_SIZE, int TS_NO_OBSTACLE) {
+    int x2c, y2c, dx, dy, dxc, dyc, error, errorv, derrorv, x;
+    int incv, sincv, incerrorv, incptrx, incptry, pixval, horiz, diago;
+    int* ptr;
+    printf("flag 1\n");
+
+    if(x1 < 0 || x1 >= TS_MAP_SIZE || y1 < 0 || y1 >= TS_MAP_SIZE) return;
+
+    x2c = x2;
+    y2c = y2;
+
+    if(x2c < 0){
+        if(x2c == x1) return;
+        y2c += (y2c - y1) * (0 - x2c) / (x2c - x1);
+        x2c = 0;
+    }
+    if(x2c >= TS_MAP_SIZE){
+        if(x2c == x1) return;
+        y2c += (y2c - y1) * (TS_MAP_SIZE - 1 - x2c) / (x2c - x1);
+        x2c = TS_MAP_SIZE - 1;
+    }
+    if(y2c < 0){
+        if(y2c == y1) return;
+        x2c += (x1 - x2c) * (0 - y2c) / (y1 - y2c);
+        y2c = 0;
+    }
+    if(y2c >= TS_MAP_SIZE){
+        if(y2c == y1) return;
+        x2c += (x1 - x2c) * (TS_MAP_SIZE - 1 - y2c) / (y1 - y2c);
+        y2c = TS_MAP_SIZE - 1;
+    }
+
+    printf("flag 2\n");
+    dx = abs(x2 - x1);
+    dy = abs(y2 - y1);
+    dxc = abs(x2c - x1);
+    dyc = abs(y2c - y1);
+    incptrx = x2 > x1 ? 1 : -1;
+    incptry = y2 > y1 ? TS_MAP_SIZE : -TS_MAP_SIZE;
+    sincv = (value > TS_NO_OBSTACLE) ? 1 : -1;
+    if(dx > dy) derrorv = abs(xp - x2);
+    else {
+        std::swap(dx, dy);
+        std::swap(dxc, dyc);
+        std::swap(incptrx, incptry);
+        derrorv = abs(yp - y2);
+    }
+    printf("derrorv: %d\n", derrorv);
+    error = 2 * dyc - dxc;
+    horiz = 2 * dyc;
+    diago = 2 * (dyc - dxc);
+    errorv = derrorv / 2;
+    incv = (value - TS_NO_OBSTACLE) / derrorv;
+    printf("flag 4\n");
+    incerrorv = value - TS_NO_OBSTACLE - derrorv * incv;
+    ptr = map_array + y1 * TS_MAP_SIZE + x1;
+    pixval = TS_NO_OBSTACLE;
+    for (x = 0; x <= dxc; x++, ptr += incptrx) {
+        if (x > dx - 2 * derrorv) {
+            if (x <= dx - derrorv) {
+                pixval += incv;
+                errorv += incerrorv;
+                if (errorv > derrorv) {
+                    pixval += sincv;
+                    errorv -= derrorv;
+                }
+            } else {
+                pixval -= incv;
+                errorv -= incerrorv;
+                if (errorv < 0) {
+                    pixval -= sincv;
+                    errorv += derrorv;
+                }
+            }
+        }
+        // Integration into the map
+        //check if the pointer is within the map bounds
+        if (ptr < map_array || ptr >= map_array + TS_MAP_SIZE * TS_MAP_SIZE) {
+            std::cerr << "Pointer out of bounds!" << std::endl;
+            return;
+        }
+        *ptr = ((256 - alpha) * (*ptr) + alpha * pixval) / 256;
+        if (error > 0) {
+            ptr += incptry;
+            error += diago;
+        } else error += horiz;
+    }
+
+    printf("flag 3\n");
+}
+
 #ifdef DEBUG_RESAMPLE
 int main(int argc, char** argv) {
     std::cout << "START" << std::endl;
@@ -288,5 +468,53 @@ int main(int argc, char** argv) {
     std::cout << "END" << std::endl;
 
     return 0;
+}
+#endif
+
+#ifdef DEBUG_TS_MAP
+int main(int argc, char** argv) {
+    std::cout << "START" << std::endl;
+
+    int x1 = 50;
+    int y1 = 50;
+    int slam_points = 5;
+    float scan_ranges[5] = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f};
+    int max_range = 10;
+    unsigned char map_array[10000]; // Example map size
+    float TS_MAP_SCALE = 1.0f;
+    float x_slam[5] = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f};
+    float y_slam[5] = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f};
+    int TS_HOLE_WIDTH = 600;
+    float origin_x = 0.0f;
+    float origin_y = 0.0f;
+    float x = 1.0f;
+    float y = 1.0f;
+    float theta = M_PI / 4; // Example angle
+    int quality = 100;
+    int TS_NO_OBSTACLE = 50;
+    int TS_OBSTACLE = 200;
+    int TS_MAP_SIZE = 100;
+
+    // Initialize map array
+    for (int i = 0; i < TS_MAP_SIZE * TS_MAP_SIZE; i++) {
+        map_array[i] = TS_NO_OBSTACLE; // Example initialization
+    }
+
+    std::cout << "Updating TS map..." << std::endl;
+    bool result = ts_map_update(x1, y1, slam_points, scan_ranges, max_range,
+                                map_array, TS_MAP_SCALE, x_slam, y_slam,
+                                TS_HOLE_WIDTH, origin_x, origin_y,
+                                x, y, theta, quality,
+                                TS_NO_OBSTACLE, TS_OBSTACLE, TS_MAP_SIZE);
+
+    if (result) {
+        std::cout << "TS map update successful!" << std::endl;
+        // Print updated map array
+        for (int i = 0; i < TS_MAP_SIZE; i++) {
+            for (int j = 0; j < TS_MAP_SIZE; j++) {
+                std::cout << (int)map_array[i * TS_MAP_SIZE + j] << " ";
+            }
+        }
+    }
 }
 #endif

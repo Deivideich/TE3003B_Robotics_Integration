@@ -164,8 +164,8 @@ def generate_launch_description():
         
         Node(
             package="puzzlebot_navigation",
-            executable="monte_carlo_localisation.py",
-            name="monte_carlo_localisation",
+            executable="SLAM_implementation.py",
+            name="SLAM",
             output="screen",
             parameters=[
                 {"useClustering": LaunchConfiguration("use_mcl_clustering")}
