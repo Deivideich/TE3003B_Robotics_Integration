@@ -10,6 +10,7 @@
 #include <memory>
 
 typedef std::vector<std::vector<int>> Grid;
+typedef std::tuple<int, int, int> StateTuple;
 
 using namespace puzzlebot_planning::model;
 
@@ -35,8 +36,9 @@ namespace puzzlebot_planning::planners
 
     struct hashFunction
         {
-            size_t operator()(const std::pair<int , int> &x) const{
-            return x.first ^ x.second;
+            size_t operator()(const StateTuple &key) const{
+            auto [x, y, theta_bin] = key;
+            return std::hash<int>()(x) ^ (std::hash<int>()(y) << 1) ^ (std::hash<int>()(theta_bin) << 2);
         }
     };
 
@@ -47,12 +49,17 @@ namespace puzzlebot_planning::planners
     {
     private:
         std::vector<std::vector<int>> grid_; // 2D grid map (0 for free space, 1 for obstacle) // AFTER SAMPLING WONT BE NEEDED
-        SE2StatePtr start_; // Starting state
-        Node* current_ = nullptr; // Current state, always initialized to nullptr
-        SE2StatePtr goal_; // Goal state
+        float map_resolution_;  // Default value
+        float theta_resolution_; // Default value
         float translational_weight_; // Weight for translational cost
         float rotational_weight_; // Weight for rotational cost
+
+        SE2StatePtr start_; // Starting state
+        SE2StatePtr goal_; // Goal state
+        Node* current_ = nullptr; // Current state, always initialized to nullptr
         TrajectoryPtr trajectory_; // Trajectory object to store the path
+        int interpolation_steps_;
+
         bool using_real_sampling_ = false; // Flag to indicate if real sampling is used
 
         /**
@@ -69,9 +76,12 @@ namespace puzzlebot_planning::planners
          * @param translational_weight The translational weight.
          * @param rotational_weight The rotational weight.
          */
-        AStarPlanner(const std::vector<std::vector<int>>& grid, 
+        AStarPlanner(const std::vector<std::vector<int>>& grid,
+                     const float map_resolution,
+                     const float theta_resolution,
                      const float translational_weight, 
-                     const float rotational_weight);
+                     const float rotational_weight,
+                     const int interpolation_steps);
 
         /**
          * @brief Empty constructor for AStarPlanner.
@@ -79,17 +89,18 @@ namespace puzzlebot_planning::planners
         AStarPlanner();
 
         /**
-         * @brief Check if the goal state is reached.
-         * @param state The current state.
-         * @return True if the goal is reached, false otherwise.
-         */
-        bool isGoalReached(const SE2StatePtr& state) const;
-
-        /**
          * @brief Find the shortest path from start to goal using A* algorithm.
          * @return A vector of states representing the path.
          */
         bool findPath();
+
+        /**
+         * @brief Angle diff between states.
+         * @param a The first state.
+         * @param b The second state.
+         * @return Absolute value of the angle diff.
+         */
+        double angleDiff(const SE2StatePtr& a, const SE2StatePtr& b) const;
         
         /**
          * @brief Build the trajectory from the current node to the start node.
