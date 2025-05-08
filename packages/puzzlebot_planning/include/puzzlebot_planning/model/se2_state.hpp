@@ -12,6 +12,11 @@ namespace puzzlebot_planning
 namespace model
 {
 
+  class SE2State;
+
+using SE2StatePtr = std::shared_ptr<SE2State>;
+
+
 /**
  * @brief Represents a state in SE(2) (x, y, theta).
  */

@@ -17,16 +17,17 @@ find_package(rclcpp REQUIRED)
 # find_package(tf2_geometry_msgs REQUIRED)
 
 # Add model library
-add_library(puzzlebot_planning_model SHARED
+add_library(puzzlebot_planning_include SHARED
     src/model/se2_state.cpp
     src/model/trajectory.cpp
+    src/planners/astar_planner.cpp
 )
-target_include_directories(puzzlebot_planning_model PUBLIC
+target_include_directories(puzzlebot_planning_include PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>
 )
 # Link model library against necessary dependencies (if any, none for now)
-ament_target_dependencies(puzzlebot_planning_model PUBLIC
+ament_target_dependencies(puzzlebot_planning_include PUBLIC
     # Add dependencies like rclcpp if model needs ROS types directly
 )
 
@@ -37,18 +38,24 @@ ament_target_dependencies(test_state_node PUBLIC
 )
 # Link the node against the model library
 target_link_libraries(test_state_node PUBLIC
-    puzzlebot_planning_model
+    puzzlebot_planning_include
 )
 
 # Specify dependencies for building order
-add_dependencies(test_state_node puzzlebot_planning_model)
+add_dependencies(test_state_node puzzlebot_planning_include)
 
 # Add the interpolate test node executable
 add_executable(test_interpolate_node src/nodes/tests/test_interpolate_node.cpp)
 # Use PRIVATE or INTERFACE if rclcpp headers aren't needed in test_interpolate_node's headers
 ament_target_dependencies(test_interpolate_node PUBLIC rclcpp)
-target_link_libraries(test_interpolate_node PUBLIC puzzlebot_planning_model)
-add_dependencies(test_interpolate_node puzzlebot_planning_model)
+target_link_libraries(test_interpolate_node PUBLIC puzzlebot_planning_include)
+add_dependencies(test_interpolate_node puzzlebot_planning_include)
+
+# Add the astar planner test node executable
+add_executable(test_astar_planner_node src/nodes/tests/test_astar_planner_node.cpp)
+ament_target_dependencies(test_astar_planner_node PUBLIC rclcpp)
+target_link_libraries(test_astar_planner_node PUBLIC puzzlebot_planning_include)
+add_dependencies(test_astar_planner_node puzzlebot_planning_include)
 
 # Install headers
 install(
@@ -58,7 +65,7 @@ install(
 
 # Install library and executables
 install(
-    TARGETS puzzlebot_planning_model
+    TARGETS puzzlebot_planning_include
     ARCHIVE DESTINATION lib
     LIBRARY DESTINATION lib
     RUNTIME DESTINATION bin # Only needed if library has standalone executables
@@ -74,9 +81,14 @@ install(
     DESTINATION lib/${PROJECT_NAME}
 )
 
+install(
+    TARGETS test_astar_planner_node
+    DESTINATION lib/${PROJECT_NAME}
+)
+
 # Export library and includes for downstream packages
 ament_export_include_directories(include)
-ament_export_libraries(puzzlebot_planning_model)
+ament_export_libraries(puzzlebot_planning_include)
 
 # Declare the package
 ament_package()

@@ -5,50 +5,57 @@
 #include <string>
 #include "puzzlebot_planning/model/state.hpp" // Includes StatePtr
 
+
+
+
 namespace puzzlebot_planning::model {
+    class Trajectory;
 
-/**
- * @brief Represents a sequence of states forming a trajectory.
- */
-class Trajectory {
-public:
-    /**
-     * @brief Default constructor. Creates an empty trajectory.
-     */
-    Trajectory();
+    using TrajectoryPtr = std::shared_ptr<Trajectory>;
+    using TrajectoryConstPtr = std::shared_ptr<const Trajectory>;
 
     /**
-     * @brief Adds a state to the end of the trajectory.
-     * @param state Shared pointer to the state to add.
+     * @brief Represents a sequence of states forming a trajectory.
      */
-    void addState(const StatePtr& state);
+    class Trajectory {
+    public:
+        /**
+         * @brief Default constructor. Creates an empty trajectory.
+         */
+        Trajectory();
 
-    /**
-     * @brief Gets the sequence of states in the trajectory.
-     * @return Const reference to the vector of StatePtr.
-     */
-    const std::vector<StatePtr>& getStates() const;
+        /**
+         * @brief Adds a state to the end of the trajectory.
+         * @param state Shared pointer to the state to add.
+         */
+        void addState(const StatePtr& state);
 
-    /**
-     * @brief Gets the number of states in the trajectory.
-     * @return The size of the trajectory.
-     */
-    size_t size() const;
+        /**
+         * @brief Gets the sequence of states in the trajectory.
+         * @return Const reference to the vector of StatePtr.
+         */
+        const std::vector<StatePtr>& getStates() const;
 
-    /**
-     * @brief Clears all states from the trajectory.
-     */
-    void clear();
+        /**
+         * @brief Gets the number of states in the trajectory.
+         * @return The size of the trajectory.
+         */
+        size_t size() const;
 
-    /**
-     * @brief Generates a string representation of the trajectory.
-     * @return String representation.
-     */
-    std::string toString() const;
+        /**
+         * @brief Clears all states from the trajectory.
+         */
+        void clear();
 
-private:
-    std::vector<StatePtr> states_;
-};
+        /**
+         * @brief Generates a string representation of the trajectory.
+         * @return String representation.
+         */
+        std::string toString() const;
+
+    private:
+        std::vector<StatePtr> states_;
+    };
 
 } // namespace puzzlebot_planning::model
 
