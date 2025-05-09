@@ -14,8 +14,10 @@ class SimpleMapServer(Node):
         
         super().__init__('simple_map_server')
         package_share_dir = get_package_share_directory('puzzlebot_navigation')
-        default_map_path = os.path.join(package_share_dir, 'maps', 'map_fixed.yaml')
-        self.declare_parameter('map_yaml_file', default_map_path)
+        # default_map_path = os.path.join(package_share_dir, 'maps', 'map_fixed.yaml')
+        # slam_map_path = os.path.join(package_share_dir, 'slam_output', 'slam_map.yaml')
+        slam_map_path = 'xd'
+        self.declare_parameter('map_yaml_file', slam_map_path)
 
         # Declare and get the map YAML path
         yaml_path = self.get_parameter('map_yaml_file').get_parameter_value().string_value
@@ -23,15 +25,15 @@ class SimpleMapServer(Node):
         self.map_msg = self.load_map_from_yaml(yaml_path)
         self.publisher = self.create_publisher(OccupancyGrid, '/map', 10)
 
-        # Publish at 1Hz
-        self.timer = self.create_timer(0.1, self.publish_map)
+        # Publish at 10Hz
+        self.timer = self.create_timer(0.25, self.publish_map)
         self.get_logger().info(f'Publishing map from: {yaml_path}')
 
     def load_map_from_yaml(self, yaml_path):
         with open(yaml_path, 'r') as f:
             map_data = yaml.safe_load(f)
 
-        image_path = os.path.join(os.path.dirname(yaml_path), map_data['image'])
+        image_path = map_data['image']
         resolution = map_data['resolution']
         origin = map_data['origin']
         negate = map_data.get('negate', 0)

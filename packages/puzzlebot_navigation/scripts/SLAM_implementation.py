@@ -31,7 +31,7 @@ class MCLNode(Node):
         self.particles = []        
         self.particle_weights = np.zeros(self.num_particles)
         self.cluster_dbscan = DBSCAN(eps=0.5, min_samples=int(self.num_particles * 0.05), metric='euclidean', n_jobs=-1)
-        self.min_cluster_distance = 0.5 / 100 # changed to mm
+        self.min_cluster_distance = 0.5 # changed to mm pending TODO
         
         self.map = None
         self.map_received = False
@@ -39,35 +39,37 @@ class MCLNode(Node):
         self.last_odom = None
         self.last_odom = None
         self.odom_received = False
-        self.odom_covariance = np.array([0.2, 0.2, 0.2, 0.2, 0.2, 0.2]) / 100.0 # changed to mm
+        self.odom_covariance = np.array([0.2, 0.2, 0.2, 0.2, 0.2, 0.2]) # changed to mm PENDING TODO
         self.delta_motion = []
         
         self.last_scan = None
         self.scan_received = False        
 
-        self.min_distance = 0.005 # meters
-        self.min_angle = 3 # degrees
+        self.min_distance = 0.05 # meters
+        self.min_angle = 10 # degrees
         self.predictionCounter = 0
         self.m_sync_count =0
         self.repropagateCountNeeded = 1
 
         #SLAM VARIABLES AND CONSTANTS
         self.TS_SCAN_SIZE = 2048 #to change
-        self.TS_MAP_SIZE = 4096
-        self.TS_MAP_SCALE = 0.3
+        self.TS_MAP_SIZE = 500 # to change
+        self.TS_MAP_SCALE = 20
         self.TS_DISTANCE_NO_DETECTION = 5000 #m
         self.TS_NO_OBSTACLE = 255 # TO CHANGE
         self.TS_OBSTACLE = 0
-        self.TS_HOLE_WIDTH = 600 # 600
+        self.TS_HOLE_WIDTH = np.double(0.3) # 300 mm
         self.slam_map = np.zeros(self.TS_MAP_SIZE * self.TS_MAP_SIZE, dtype=np.int32)
         self.last_saved_map = None
         self.MAX_RANGE = 5.0
         self.map_save_counter = 0
         self.new_scan_received = False
         self.new_odom = False
+        self.slam_origin_x = np.double(self.TS_MAP_SIZE // 2) # 
+        self.slam_origin_y = np.double(self.TS_MAP_SIZE // 2) # self.TS_MAP_SIZE // 2
+        self.cnt_slam_map = 0
 
-        self.ts_map_init()
-
+        
         #### TF HANDLERS ####
         self.tf_buffer = tf2_ros.Buffer()
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
@@ -83,11 +85,16 @@ class MCLNode(Node):
         self.create_subscription(Odometry, '/odom', self.odom_callback, 10)
         self.create_subscription(LaserScan, '/scan', self.scan_callback, 10)
 
+        self.slam_pub = self.create_publisher(OccupancyGrid, '/map', 10)
+
         #### TIMER ####
         self.timer = self.create_timer(0.05, self.mcl_loop)
         self.slam_timer = self.create_timer(0.05, self.slam_loop)
 
         self.useClustering = self.get_parameter('useClustering').get_parameter_value().bool_value
+
+        self.ts_map_init()
+
         
         self.get_logger().info("SLAM Node initialized")
         self.get_logger().info(f"Using C++ MCL library: {cpp_mcl}")
@@ -99,7 +106,7 @@ class MCLNode(Node):
     def publish_estimated_pose(self):
         x, y, theta = self.estimate_pose()
 
-        x, y, theta = float(x) * 1000.0, float(y) * 1000.0, float(theta) #changed to mm
+        x, y, theta = float(x), float(y), float(theta) #changed to m, change to mm * 1000
 
         msg = PoseWithCovarianceStamped()
         msg.header.stamp = self.get_clock().now().to_msg()
@@ -120,7 +127,7 @@ class MCLNode(Node):
     def map_callback(self, msg):    
         self.map = msg
 
-        if not self.map_received:
+        if not self.map_received and self.cnt_slam_map > 10:
             self.get_logger().info("Map received")
             self.map_received = True
 
@@ -145,7 +152,7 @@ class MCLNode(Node):
         resolution = self.map.info.resolution
         origin = self.map.info.origin
 
-        free_indices = np.argwhere(self.map_data == 0)  # 0 = free space
+        free_indices = np.argwhere(self.map_data < 50)  # 0 = free space
 
         chosen_indices = free_indices[np.random.choice(len(free_indices), self.num_particles)]
 
@@ -167,8 +174,8 @@ class MCLNode(Node):
 
         for x, y, theta in self.particles:
             pose = Pose()
-            pose.position.x = float(x) * 1000.0 # changed to mm
-            pose.position.y = float(y) * 1000.0 # changed to mm
+            pose.position.x = float(x) #* 1000.0 # changed to mm #TODO
+            pose.position.y = float(y) #* 1000.0 # changed to mm #TODO
             pose.position.z = 0.0
 
             q = self.euler_to_quaternion(0, 0, theta)
@@ -197,7 +204,8 @@ class MCLNode(Node):
         scan_msg.header.stamp = self.get_clock().now().to_msg()
         
         # Publish the scan message
-        self.scan_pub.publish(scan_msg)
+        if self.cnt_slam_map > 10:
+            self.scan_pub.publish(scan_msg)
 
     def odom_callback(self, msg):
         self.odom = msg
@@ -389,7 +397,7 @@ class MCLNode(Node):
 
 
     def motion_update(self, delta):
-        dx, dy, dtheta = delta * 1000.0
+        dx, dy, dtheta = delta #[v * 1000 for v in delta] #TODO
 
         delta_trans = math.sqrt(dx**2 + dy**2)
         delta_rot = math.atan2(dy, dx)
@@ -416,7 +424,7 @@ class MCLNode(Node):
         try:
             x, y, theta = self.estimate_pose()
 
-            x, y, theta = float(x) * 1000.0, float(y) * 1000.0, float(theta) # changed to mm
+            x, y, theta = float(x), float(y), float(theta) # TODO change to mm pending
 
             # Get odom -> base_link transform
             trans = self.tf_buffer.lookup_transform(
@@ -483,7 +491,7 @@ class MCLNode(Node):
 
         if diffDistance > self.min_distance or diffAngle > self.min_angle:
             self.motion_update(self.delta_motion)       
-            self.last_odom = self.odom
+            # self.last_odom = self.odom
             
             self.sensor_update()
             
@@ -505,6 +513,7 @@ class MCLNode(Node):
         init_val = int((self.TS_NO_OBSTACLE + self.TS_OBSTACLE) / 2)
         self.slam_map.fill(init_val)
         self.save_slam_map_periodically()
+        self.update_map()
 
     def scan_to_coord(self, scan_angles, scan_ranges, theta):
         x_slam = np.zeros(len(scan_ranges))
@@ -530,14 +539,14 @@ class MCLNode(Node):
             _, _, yaw = tf_transformations.euler_from_quaternion([ori.x, ori.y, ori.z, ori.w])
             return pos.x, pos.y, yaw
         x, y, theta = get_pose(self.odom)
-        x, y, theta = np.double(x) * 1000.0, np.double(y) * 1000.0, float(theta)
+        x, y, theta = np.double(x), np.double(y), float(theta) # convert into mm * 1000
         
 
-        origin_x = np.double(self.TS_MAP_SIZE // 2)
-        origin_y = np.double(self.TS_MAP_SIZE // 2)
+        # self.slam_origin_x = np.double(self.TS_MAP_SIZE // 2)
+        # self.slam_origin_y = np.double(self.TS_MAP_SIZE // 2)
         
-        x1 = int(np.floor(origin_x + x * self.TS_MAP_SCALE + 0.5))
-        y1 = int(np.floor(origin_y + y * self.TS_MAP_SCALE + 0.5))
+        x1 = int(np.floor(self.slam_origin_x + x * self.TS_MAP_SCALE + 0.5))
+        y1 = int(np.floor(self.slam_origin_y + y * self.TS_MAP_SCALE + 0.5))
         
         scan_angles = np.arange(self.scan.angle_min, self.scan.angle_max, self.scan.angle_increment, dtype=np.float32)
         scan_ranges = np.array(self.scan.ranges, dtype=np.float32)
@@ -550,7 +559,7 @@ class MCLNode(Node):
         x_slam = np.zeros(slam_points, dtype=np.float32)
         y_slam = np.zeros(slam_points, dtype=np.float32)
         x_slam, y_slam = self.scan_to_coord(scan_angles, scan_ranges, theta)
-        x_slam, y_slam = x_slam * 1000.0, y_slam * 1000.0 #Convert to mm
+        x_slam, y_slam = x_slam, y_slam  #Convert to mm
 
         self.mcl_cpp.ts_map_update.argtypes = [
             ctypes.c_int,                      # x1
@@ -562,7 +571,7 @@ class MCLNode(Node):
             ctypes.c_float,     # TS_MAP_SCALE (float)
             ctypes.POINTER(ctypes.c_double),     # x_slam (float array)
             ctypes.POINTER(ctypes.c_double),     # y_slam (float array)
-            ctypes.c_int,                      # TS_HOLE_WIDTH
+            ctypes.c_double,                      # TS_HOLE_WIDTH
             ctypes.c_double,                    # origin_x
             ctypes.c_double,                    # origin_y
             ctypes.c_double,                    # x
@@ -594,8 +603,8 @@ class MCLNode(Node):
             x_slam_ctypes,
             y_slam_ctypes,
             self.TS_HOLE_WIDTH,
-            origin_x,
-            origin_y,
+            self.slam_origin_x,
+            self.slam_origin_y,
             x,
             y,
             theta,
@@ -612,10 +621,10 @@ class MCLNode(Node):
 
 
     def slam_loop(self):
-        if self.map is None:
-            return
-        if self.particles is None or len(self.particles) == 0:
-            return
+        # if self.map is None:
+        #     return
+        # if self.particles is None or len(self.particles) == 0:
+        #     return
         if len(self.delta_motion) <= 0:         
             return
 
@@ -625,9 +634,45 @@ class MCLNode(Node):
         if (self.new_odom) and self.new_scan_received and (diffDistance > self.min_distance or diffAngle > self.min_angle):
             self.new_scan_received = False
             self.new_odom = False
-            self.ts_map_update(200)
+            self.last_odom = self.odom #TODO
+            self.ts_map_update(250)
             self.save_slam_map_periodically()
+            self.update_map()
+            self.cnt_slam_map += 1
             
+
+    def update_map(self):
+        # self.get_logger().info("Updating SLAM map")
+        # self.get_logger().info(f"Map size: {self.slam_map.shape}")
+        # self.get_logger().info(f"Map data: {self.slam_map}")
+        # self.get_logger().info(f"Map origin: {self.slam_origin_x}, {self.slam_origin_y}")
+
+        # Convert to 2D array
+        grid = OccupancyGrid()
+        map_data = np.array(self.slam_map, dtype=np.int8).reshape((self.TS_MAP_SIZE, self.TS_MAP_SIZE))
+        self.map_array = map_data
+
+        rescaled = ((255 - self.slam_map).astype(np.float32) / 255.0 * 100.0).astype(np.int8)
+        # rescaled = (self.slam_map.astype(np.float32) / 255.0 * 100.0).astype(np.int8)
+
+        # Update the map in the OccupancyGrid message
+        grid.data = rescaled.flatten().tolist()
+        grid.info.width = self.TS_MAP_SIZE
+        grid.info.height = self.TS_MAP_SIZE
+        grid.info.resolution = 0.05
+        grid.info.origin.position.x = 0.0 
+        grid.info.origin.position.y = 0.0
+        grid.info.origin.position.z = 0.0
+        grid.info.origin.orientation.x = 0.0
+        grid.info.origin.orientation.y = 0.0
+        grid.info.origin.orientation.z = 0.0
+        grid.info.origin.orientation.w = 1.0
+        grid.header.stamp = self.get_clock().now().to_msg()
+        grid.header.frame_id = 'map'
+
+
+        # Publish the updated map
+        self.slam_pub.publish(grid)
 
     def save_slam_map_periodically(self):
         # self.get_logger().info("Saving SLAM map periodically")
@@ -647,7 +692,7 @@ class MCLNode(Node):
             with open(yaml_path, 'w') as f:
                 f.write(f"image: {pgm_path}\n")
                 f.write(f"resolution: {self.TS_MAP_SCALE}\n")
-                f.write(f"origin: [{self.map_origin.x}, {self.map_origin.y}, 0.0]\n")
+                f.write(f"origin: [{self.slam_origin_x}, {self.slam_origin_y}, 0.0]\n")
                 f.write(f"negate: 0\n")
                 f.write(f"occupied_thresh: 0.65\n")
                 f.write(f"free_thresh: 0.196\n")

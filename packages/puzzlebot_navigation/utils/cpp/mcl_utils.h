@@ -24,7 +24,7 @@ EXPORT bool weight_particles(
 
 EXPORT bool ts_map_update(int x1, int y1, int slam_points, float* scan_ranges, int max_range,
                    int* map_array, float TS_MAP_SCALE, double* x_slam, double* y_slam,
-                   int TS_HOLE_WIDTH, double origin_x, double origin_y, double x, double y, float theta, int quality,
+                   double TS_HOLE_WIDTH, double origin_x, double origin_y, double x, double y, float theta, int quality,
                    int TS_NO_OBSTACLE, int TS_OBSTACLE, int TS_MAP_SIZE);
 
 
