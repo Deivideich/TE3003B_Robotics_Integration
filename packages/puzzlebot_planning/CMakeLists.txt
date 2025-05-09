@@ -9,10 +9,11 @@ endif()
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 # Keep other find_package calls if needed later, but comment out for now
-# find_package(nav_msgs REQUIRED)
-# find_package(geometry_msgs REQUIRED)
+find_package(nav_msgs REQUIRED)
+find_package(geometry_msgs REQUIRED)
+find_package(puzzlebot_interfaces REQUIRED)
 # find_package(visualization_msgs REQUIRED)
-# find_package(tf2 REQUIRED)
+find_package(tf2 REQUIRED)
 # find_package(tf2_ros REQUIRED)
 # find_package(tf2_geometry_msgs REQUIRED)
 
@@ -31,6 +32,49 @@ ament_target_dependencies(puzzlebot_planning_include PUBLIC
     # Add dependencies like rclcpp if model needs ROS types directly
 )
 
+# MAIN EXECUTABLES
+# Add the main  A* service node executable
+add_executable(astar_planner_server src/nodes/astar_planner_server.cpp)
+ament_target_dependencies(astar_planner_server PUBLIC
+    rclcpp
+    nav_msgs
+    geometry_msgs
+    tf2
+    puzzlebot_interfaces
+)
+# Link the node against the model library
+target_link_libraries(astar_planner_server PUBLIC
+    puzzlebot_planning_include
+)
+# Specify dependencies for building order
+add_dependencies(astar_planner_server puzzlebot_planning_include)
+# Install the main A* node executable
+install(
+    TARGETS astar_planner_server
+    DESTINATION lib/${PROJECT_NAME}
+)
+
+# Add the main A* client node executable
+add_executable(astar_planner_client src/nodes/astar_planner_client.cpp)
+ament_target_dependencies(astar_planner_client PUBLIC
+    rclcpp
+    nav_msgs
+    geometry_msgs
+    puzzlebot_interfaces
+)
+# Link the client node against the model library
+target_link_libraries(astar_planner_client PUBLIC
+    puzzlebot_planning_include
+)
+# Specify dependencies for building order
+add_dependencies(astar_planner_client puzzlebot_planning_include)
+# Install the main A* client node executable
+install(
+    TARGETS astar_planner_client
+    DESTINATION lib/${PROJECT_NAME}
+)
+
+# TESTING EXECUTABLES
 # Add the ROS test node executable
 add_executable(test_state_node src/nodes/tests/test_state_node.cpp)
 ament_target_dependencies(test_state_node PUBLIC

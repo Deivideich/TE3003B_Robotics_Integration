@@ -10,11 +10,14 @@ namespace puzzlebot_planning::planners
 {
     AStarPlanner::AStarPlanner(const std::vector<std::vector<int>>& grid, 
                                const float map_resolution,
+                               const float map_origin_x,
+                               const float map_origin_y,
                                const float theta_resolution,
                                const float translational_weight = 0.5, 
                                const float rotational_weight = 0.5,
                                const int interpolation_steps = 10)
-        : grid_(grid), map_resolution_(map_resolution), theta_resolution_(theta_resolution), 
+        : grid_(grid), map_resolution_(map_resolution), 
+          theta_resolution_(theta_resolution), map_origin_x_(map_origin_x), map_origin_y_(map_origin_y),
           translational_weight_(translational_weight), rotational_weight_(rotational_weight),
           interpolation_steps_(interpolation_steps)
     {
@@ -117,12 +120,18 @@ namespace puzzlebot_planning::planners
                 return true; // Path found
             }
 
-        
+            int grid_x = static_cast<int>(std::round((current_node->state->getX() - map_origin_x_) / map_resolution_));
+            int grid_y = static_cast<int>(std::round((current_node->state->getY() - map_origin_y_) / map_resolution_));
+            int theta_bin = static_cast<int>(std::round(current_node->state->getTheta() / theta_resolution_));
+            // int theta_bin = static_cast<int>(std::round(current_node->state->getTheta() / theta_resolution_));
+            auto it = closed_set.find({grid_y, grid_x, theta_bin});
 
+            if (it != closed_set.end() && it->second->f_cost <= current_node->f_cost)
+                        continue; // Skip this neighbor
+                    else if (it != closed_set.end())
+                        closed_set.erase(it); // Remove from closed set if we found a better path
             // Add current node to closed set
-            closed_set[{static_cast<int>(std::round(current_node->state->getX() / map_resolution_)), 
-                        static_cast<int>(std::round(current_node->state->getY() / map_resolution_)),
-                        static_cast<int>(std::round(current_node->state->getTheta() / theta_resolution_))}] = current_node;
+            closed_set[{grid_y, grid_x, theta_bin}] = current_node;
 
             // Generate neighbors
             for (int dx = -1; dx <= 1; ++dx)
@@ -134,20 +143,16 @@ namespace puzzlebot_planning::planners
                     double new_x = current_node->state->getX() + dx * map_resolution_;
                     double new_y = current_node->state->getY() + dy * map_resolution_;
 
-                    int grid_x = static_cast<int>(std::round(new_x / map_resolution_));
-                    int grid_y = static_cast<int>(std::round(new_y / map_resolution_));
-
-
-                    std::cout << "Grid X: " << grid_x << ", Grid Y: " << grid_y << std::endl;
-                    std::cout << "New X: " << new_x << ", New Y: " << new_y << std::endl;
+                    int new_grid_x = static_cast<int>(std::round((new_x - map_origin_x_) / map_resolution_));
+                    int new_grid_y = static_cast<int>(std::round((new_y - map_origin_y_) / map_resolution_));
 
                     // Check if the new position is within bounds and not an obstacle
-                    if (grid_x < 0 || grid_x >= grid_.size() || grid_y < 0 || grid_y >= grid_[0].size() || grid_[grid_x][grid_y] == 1)
+                    if (new_grid_y < 0 || new_grid_y >= grid_.size() || new_grid_x < 0 || new_grid_x >= grid_[0].size() || grid_[new_grid_y][new_grid_x] == 1)
                         continue;
                     
                     // Calculate the new theta based on the movement direction
                     double new_theta = std::atan2(dy * map_resolution_, dx * map_resolution_);
-                    int theta_bin = static_cast<int>(std::round(new_theta / theta_resolution_));
+                    int new_theta_bin = static_cast<int>(std::round(new_theta / theta_resolution_));
                     // Create a new state for the neighbor
                     SE2StatePtr neighbor_state = std::make_shared<SE2State>(new_x, new_y, new_theta);
 
@@ -157,7 +162,7 @@ namespace puzzlebot_planning::planners
                     double f_cost = g_cost + h_cost;
 
                     // Check if the neighbor is already in the closed set
-                    auto it = closed_set.find({grid_x, grid_y, theta_bin});
+                    auto it = closed_set.find({new_grid_y, new_grid_x, new_theta_bin});
                     if (it != closed_set.end() && it->second->f_cost <= f_cost)
                         continue; // Skip this neighbor
                     else if (it != closed_set.end())

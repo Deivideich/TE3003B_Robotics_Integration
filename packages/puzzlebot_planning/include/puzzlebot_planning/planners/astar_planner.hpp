@@ -37,8 +37,8 @@ namespace puzzlebot_planning::planners
     struct hashFunction
         {
             size_t operator()(const StateTuple &key) const{
-            auto [x, y, theta_bin] = key;
-            return std::hash<int>()(x) ^ (std::hash<int>()(y) << 1) ^ (std::hash<int>()(theta_bin) << 2);
+            auto [x, y, theta] = key;
+            return std::hash<int>()(x) ^ std::hash<int>()(y) ^ std::hash<int>()(theta);
         }
     };
 
@@ -50,6 +50,8 @@ namespace puzzlebot_planning::planners
     private:
         std::vector<std::vector<int>> grid_; // 2D grid map (0 for free space, 1 for obstacle) // AFTER SAMPLING WONT BE NEEDED
         float map_resolution_;  // Default value
+        float map_origin_x_; // Default value
+        float map_origin_y_; // Default value
         float theta_resolution_; // Default value
         float translational_weight_; // Weight for translational cost
         float rotational_weight_; // Weight for rotational cost
@@ -78,6 +80,8 @@ namespace puzzlebot_planning::planners
          */
         AStarPlanner(const std::vector<std::vector<int>>& grid,
                      const float map_resolution,
+                     const float map_origin_x,
+                     const float map_origin_y,
                      const float theta_resolution,
                      const float translational_weight, 
                      const float rotational_weight,
@@ -115,6 +119,9 @@ namespace puzzlebot_planning::planners
         Grid getGrid() const { return grid_; }
         TrajectoryPtr getTrajectory() const { return trajectory_; }
         bool isUsingRealSampling() const { return using_real_sampling_; }
+        float getMapResolution() const { return map_resolution_; }
+        float getMapOriginX() const { return map_origin_x_; }
+        float getMapOriginY() const { return map_origin_y_; }
 
         // Setters
         void setStart(const SE2StatePtr& start) { start_ = start; }
