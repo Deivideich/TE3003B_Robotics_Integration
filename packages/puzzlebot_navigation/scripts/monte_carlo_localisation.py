@@ -18,19 +18,41 @@ import ament_index_python.packages
 
 package_prefix = ament_index_python.packages.get_package_prefix('puzzlebot_navigation')
 cpp_mcl = os.path.join(package_prefix, 'lib', 'puzzlebot_navigation', 'mcl_utils.so')
+
+ARGS = {
+    'useClustering': False,
+    'numParticles': 1000,
+    'minClusterDistance': 0.5,
+    'clusterEps': 0.5,
+    'clusterMinSamples': 0.05,
+    'scaleRdParticles': 0.0,
+    'minDistance': 0.05,
+    'minAngle': 10.0,
+    'repropagateCountNeeded': 1,
+    'HZ' : 20.0,
+}
 class MCLNode(Node):
     def __init__(self):
         super().__init__('mcl_node')
         self.mcl_cpp = ctypes.CDLL(cpp_mcl)
-        self.declare_parameter('useClustering', False)
+        
+        self.declare_parameter('useClustering', ARGS['useClustering'])
+        self.declare_parameter('numParticles', ARGS['numParticles'])
+        self.declare_parameter('minClusterDistance', ARGS['minClusterDistance'])
+        self.declare_parameter('clusterEps', ARGS['clusterEps'])
+        self.declare_parameter('clusterMinSamples', ARGS['clusterMinSamples'])
+        self.declare_parameter('scaleRdParticles', ARGS['scaleRdParticles'])
+        self.declare_parameter('minDistance', ARGS['minDistance'])
+        self.declare_parameter('minAngle', ARGS['minAngle'])
+        self.declare_parameter('repropagateCountNeeded', ARGS['repropagateCountNeeded'])
+        self.declare_parameter('HZ', ARGS['HZ'])
 
-        self.num_particles = 1000
-        self.num_dimensions = 3
-        self.scale_rd_particles = 0.0
+        self.initialize_params()
+
+        
         self.particles = []        
         self.particle_weights = np.zeros(self.num_particles)
-        self.cluster_dbscan = DBSCAN(eps=0.5, min_samples=int(self.num_particles * 0.05), metric='euclidean', n_jobs=-1)
-        self.min_cluster_distance = 0.5
+        self.cluster_dbscan = DBSCAN(eps=self.cluster_eps, min_samples=int(self.cluster_min_samples), metric='euclidean', n_jobs=-1)
         
         self.map = None
         self.map_received = False
@@ -43,12 +65,7 @@ class MCLNode(Node):
         
         self.last_scan = None
         self.scan_received = False        
-
-        self.min_distance = 0.05
-        self.min_angle = 10
         self.predictionCounter = 0
-        self.m_sync_count =0
-        self.repropagateCountNeeded = 1
 
         #### TF HANDLERS ####
         self.tf_buffer = tf2_ros.Buffer()
@@ -64,18 +81,26 @@ class MCLNode(Node):
         self.create_subscription(OccupancyGrid, '/map', self.map_callback, 10)
         self.create_subscription(Odometry, '/odom', self.odom_callback, 10)
         self.create_subscription(LaserScan, '/scan', self.scan_callback, 10)
+        self.create_subscription(PoseWithCovarianceStamped, '/initialpose', self.pose_overwrite, 10)
 
         #### TIMER ####
         self.timer = self.create_timer(0.05, self.mcl_loop)
-
-        self.useClustering = self.get_parameter('useClustering').get_parameter_value().bool_value
         
         self.get_logger().info("MCL Node initialized")
         self.get_logger().info(f"Using C++ MCL library: {cpp_mcl}")
         self.get_logger().info(f"Using clustering: {self.useClustering}")
     
-    
-
+    def initialize_params(self):
+        self.useClustering = self.get_parameter('useClustering').get_parameter_value().bool_value
+        self.num_particles = self.get_parameter('numParticles').get_parameter_value().integer_value
+        self.num_dimensions = 3
+        self.min_cluster_distance = self.get_parameter('minClusterDistance').get_parameter_value().double_value
+        self.cluster_eps = self.get_parameter('clusterEps').get_parameter_value().double_value
+        self.cluster_min_samples = int(self.get_parameter('clusterMinSamples').get_parameter_value().double_value * self.num_particles)
+        self.scale_rd_particles = self.get_parameter('scaleRdParticles').get_parameter_value().double_value
+        self.min_distance = self.get_parameter('minDistance').get_parameter_value().double_value
+        self.min_angle = math.radians(self.get_parameter('minAngle').get_parameter_value().double_value)
+        self.repropagateCountNeeded = int(self.get_parameter('repropagateCountNeeded').get_parameter_value().integer_value)
 
     def publish_estimated_pose(self):
         x, y, theta = self.estimate_pose()
@@ -116,6 +141,30 @@ class MCLNode(Node):
             self.map_array = map_data
 
             self.initialize_particles()
+    
+    def pose_overwrite(self, msg):
+        if not self.map_received:
+            self.get_logger().warn("Map not received yet. Cannot overwrite pose.")
+            return
+
+        x = msg.pose.pose.position.x
+        y = msg.pose.pose.position.y
+        theta = tf_transformations.euler_from_quaternion([
+            msg.pose.pose.orientation.x,
+            msg.pose.pose.orientation.y,
+            msg.pose.pose.orientation.z,
+            msg.pose.pose.orientation.w
+        ])[2]
+
+        # Check if the pose is within the map bounds
+        if (x < self.map_origin.x or x > self.map_origin.x + self.map_width * self.map_resolution or
+            y < self.map_origin.y or y > self.map_origin.y + self.map_height * self.map_resolution):
+            self.get_logger().warn("Pose is outside the map bounds. Ignoring.")
+            return
+
+        # Initialize particles with the new pose
+        self.particles = [(x, y, theta) for _ in range(self.num_particles)]
+        self.resample_particles()
 
             
     def initialize_particles(self):
