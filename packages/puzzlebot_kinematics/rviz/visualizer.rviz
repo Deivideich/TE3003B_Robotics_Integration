@@ -145,6 +145,21 @@ Visualization Manager:
                 {}
       Update Interval: 0
       Value: true
+    - Class: rviz_default_plugins/Odometry
+      Enabled: true
+      Name: Odometry
+      Position Tolerance: 0.1
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /odom
+      Angle Tolerance: 0.1
+      Keep: 1
+      Color: 255; 0; 0
+      Position Covariance: true
+      Orientation Covariance: false
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48
