@@ -49,6 +49,7 @@ namespace puzzlebot_planning::planners
     {
     private:
         std::vector<std::vector<int>> grid_; // 2D grid map (0 for free space, 1 for obstacle) // AFTER SAMPLING WONT BE NEEDED
+        std::vector<std::pair<float,float>> base_footprint_;
         float map_resolution_;  // Default value
         float map_origin_x_; // Default value
         float map_origin_y_; // Default value
@@ -79,6 +80,7 @@ namespace puzzlebot_planning::planners
          * @param rotational_weight The rotational weight.
          */
         AStarPlanner(const std::vector<std::vector<int>>& grid,
+                     const std::vector<std::pair<float,float>>& base_footprint,
                      const float map_resolution,
                      const float map_origin_x,
                      const float map_origin_y,
@@ -91,6 +93,12 @@ namespace puzzlebot_planning::planners
          * @brief Empty constructor for AStarPlanner.
          */
         AStarPlanner();
+
+        /**
+         * @brief Check that the state is collision free.
+         * @param state The state to check.
+         */
+        bool isFootPrintCollisionFree(const SE2StatePtr& state) const;
 
         /**
          * @brief Find the shortest path from start to goal using A* algorithm.
@@ -120,8 +128,11 @@ namespace puzzlebot_planning::planners
         TrajectoryPtr getTrajectory() const { return trajectory_; }
         bool isUsingRealSampling() const { return using_real_sampling_; }
         float getMapResolution() const { return map_resolution_; }
+        std::pair<float,float> getMapOrigin() const { return std::make_pair(map_origin_x_, map_origin_y_); }
         float getMapOriginX() const { return map_origin_x_; }
         float getMapOriginY() const { return map_origin_y_; }
+        std::vector<std::pair<float,float>> getBaseFootprint() const { return base_footprint_; }
+        
 
         // Setters
         void setStart(const SE2StatePtr& start) { start_ = start; }

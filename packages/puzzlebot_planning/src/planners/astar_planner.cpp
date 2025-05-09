@@ -8,7 +8,8 @@
 
 namespace puzzlebot_planning::planners
 {
-    AStarPlanner::AStarPlanner(const std::vector<std::vector<int>>& grid, 
+    AStarPlanner::AStarPlanner(const std::vector<std::vector<int>>& grid,
+                               const std::vector<std::pair<float,float>>& base_footprint,
                                const float map_resolution,
                                const float map_origin_x,
                                const float map_origin_y,
@@ -16,7 +17,7 @@ namespace puzzlebot_planning::planners
                                const float translational_weight = 0.5, 
                                const float rotational_weight = 0.5,
                                const int interpolation_steps = 10)
-        : grid_(grid), map_resolution_(map_resolution), 
+        : grid_(grid), base_footprint_(base_footprint), map_resolution_(map_resolution), 
           theta_resolution_(theta_resolution), map_origin_x_(map_origin_x), map_origin_y_(map_origin_y),
           translational_weight_(translational_weight), rotational_weight_(rotational_weight),
           interpolation_steps_(interpolation_steps)
@@ -66,10 +67,86 @@ namespace puzzlebot_planning::planners
         trajectory_->addState(node->state); // Add the current node's state to the trajectory
     }
 
+    bool AStarPlanner::isFootPrintCollisionFree(const SE2StatePtr& state) const 
+    {
+        double x = state->getX();
+        double y = state->getY();
+        double theta = state->getTheta();
+    
+        // Rotation matrix components
+        double cos_theta = std::cos(theta);
+        double sin_theta = std::sin(theta);
+
+        // Corners of the footprint in robot frame
+        double x_min = base_footprint_[0].first;
+        double y_min = base_footprint_[0].second;
+        double x_max = base_footprint_[1].first;
+        double y_max = base_footprint_[1].second;
+
+        std::vector<std::pair<double, double>> corners = {
+            {x_min, y_min},
+            {x_min, y_max},
+            {x_max, y_min},
+            {x_max, y_max}
+        };
+
+        // Transform all corners to world frame
+        std::vector<std::pair<int, int>> grid_points;
+        for (const auto& [cx, cy] : corners)
+        {
+            double wx = x + cx * cos_theta - cy * sin_theta;
+            double wy = y + cx * sin_theta + cy * cos_theta;
+
+            int gx = static_cast<int>(std::round((wx - map_origin_x_) / map_resolution_));
+            int gy = static_cast<int>(std::round((wy - map_origin_y_) / map_resolution_));
+
+            grid_points.push_back({gy, gx});
+        }
+
+        // Determine bounding box of footprint in grid coordinates
+        int min_x = std::numeric_limits<int>::max();
+        int min_y = std::numeric_limits<int>::max();
+        int max_x = std::numeric_limits<int>::min();
+        int max_y = std::numeric_limits<int>::min();
+
+        for (const auto& [gy, gx] : grid_points)
+        {
+            min_x = std::min(min_x, gx);
+            max_x = std::max(max_x, gx);
+            min_y = std::min(min_y, gy);
+            max_y = std::max(max_y, gy);
+        }
+
+        // Clamp bounds to grid size
+        min_x = std::max(0, min_x);
+        min_y = std::max(0, min_y);
+        max_x = std::min(static_cast<int>(grid_[0].size()) - 1, max_x);
+        max_y = std::min(static_cast<int>(grid_.size()) - 1, max_y);
+
+        // Check for obstacles inside the bounding box
+        for (int y = min_y; y <= max_y; ++y)
+        {
+            for (int x = min_x; x <= max_x; ++x)
+            {
+                if (grid_[y][x] == 1)
+                {
+                    return false; // Collision detected
+                }
+            }
+        }
+
+        return true; // No collision
+    }
+    
+
     bool AStarPlanner::findPath()
     {
         if (grid_.empty() || grid_[0].empty()) {
             std::cerr << "Grid is empty!" << std::endl;
+            return false;
+        }
+        if (base_footprint_.empty()) {
+            std::cerr << "Base footprint is not set!" << std::endl;
             return false;
         }
         if (start_ == nullptr || goal_ == nullptr) {
@@ -155,6 +232,10 @@ namespace puzzlebot_planning::planners
                     int new_theta_bin = static_cast<int>(std::round(new_theta / theta_resolution_));
                     // Create a new state for the neighbor
                     SE2StatePtr neighbor_state = std::make_shared<SE2State>(new_x, new_y, new_theta);
+
+                    // Check if the neighbor state is collision-free
+                    if (!isFootPrintCollisionFree(neighbor_state))
+                        continue;
 
                     // Calculate costs
                     double g_cost = current_node->g_cost + heuristic(neighbor_state, current_node->state);;

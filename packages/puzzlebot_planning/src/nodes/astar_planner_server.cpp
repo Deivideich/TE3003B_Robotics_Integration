@@ -36,6 +36,7 @@ class AStarPlannerServer : public rclcpp::Node
         int interpolation_steps_;
         bool using_real_sampling_;
         float origin_x, origin_y;
+        float robot_width, robot_height;
     public:
         AStarPlannerServer() : Node("astar_planner_server") {
             // Declare and initialize parameters
@@ -74,10 +75,17 @@ class AStarPlannerServer : public rclcpp::Node
 
             origin_x = message.info.origin.position.x;
             origin_y = message.info.origin.position.y;
-            
+
+            float robot_width = 0.4;  // meters
+            float robot_height = 0.4; // meters
+            std::vector<std::pair<float,float>> base_footprint = {
+                {-robot_width / 2.0f, -robot_height / 2.0f},  // bottom-left
+                { robot_width / 2.0f,  robot_height / 2.0f}   // top-right
+            };
+                        
             // Initialize A* planner
             astar_planner_ = std::make_shared<puzzlebot_planning::planners::AStarPlanner>(
-                grid_map, message.info.resolution, message.info.origin.position.x, message.info.origin.position.y
+                grid_map, base_footprint, message.info.resolution, message.info.origin.position.x, message.info.origin.position.y
                 , theta_resolution_, translational_weight_, rotational_weight_, interpolation_steps_);
 
             astar_planner_->setUsingRealSampling(using_real_sampling_);
@@ -91,6 +99,8 @@ class AStarPlannerServer : public rclcpp::Node
             this->declare_parameter("rotational_weight", 0.5f);
             this->declare_parameter("interpolation_steps", 100);
             this->declare_parameter("using_real_sampling", false);
+            this->declare_parameter("robot_width", 0.4f);
+            this->declare_parameter("robot_height", 0.4f);
         }
 
         void initialize_parameters(){
@@ -99,6 +109,8 @@ class AStarPlannerServer : public rclcpp::Node
             this->get_parameter("rotational_weight", rotational_weight_);
             this->get_parameter("interpolation_steps", interpolation_steps_);
             this->get_parameter("using_real_sampling", using_real_sampling_);
+            this->get_parameter("robot_width", robot_width);
+            this->get_parameter("robot_height", robot_height_);
         }
 
         void planPathCallback(const std::shared_ptr<puzzlebot_interfaces::srv::PlanPath::Request> request,

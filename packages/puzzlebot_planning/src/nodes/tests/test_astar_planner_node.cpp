@@ -23,13 +23,14 @@ int main(int argc, char * argv[])
         {0, 1, 0, 0, 0},
         {0, 0, 0, 1, 0}
     };
+    std::vector<std::pair<float,float>> base_footprint = {{0.0,0.0},{0.0,0.0}}; // x min y min, x max y max
 
     // Create start and goal states
     auto start_state = std::make_shared<SE2State>(0.0, 0.0, 0.0);
     auto goal_state = std::make_shared<SE2State>(40.0, 40.0, M_PI / 2.0);
 
     // Create an A* planner instance
-    AStarPlanner astar_planner(grid, 10.0, 0,0, M_PI / 8, 0.5, 0.5, 100); // Weights for translational and rotational costs
+    AStarPlanner astar_planner(grid, base_footprint, 10.0, 0,0, M_PI / 8, 0.5, 0.5, 100); // Weights for translational and rotational costs
 
     // Set start and goal states
     astar_planner.setStart(start_state);
