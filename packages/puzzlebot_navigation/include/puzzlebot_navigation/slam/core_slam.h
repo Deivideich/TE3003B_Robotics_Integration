@@ -67,6 +67,14 @@ namespace puzzlebot_navigation
                 
                 void updateMapParams();
 
+                std::pair<int,int> worldToMap(float x, float y) const;
+
+                std::pair<float,float> mapToWorld(int x, int y) const;
+
+                std::pair<float, float> get_map_center() const;
+
+                void expandMap(float world_x, float world_y);
+
                 void motion_update(float dx, float dy, float dtheta);
 
                 bool initial_guess(

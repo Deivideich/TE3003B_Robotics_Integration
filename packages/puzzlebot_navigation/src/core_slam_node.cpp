@@ -157,68 +157,40 @@ private:
 
     void broadcast_transform() {
         try {
-            if (!max_particle) {
-                RCLCPP_WARN(this->get_logger(), "max_particle is null!");
-                return;
-            }
-            // Get the estimated pose (best particle from SLAM)
-            const auto& [x, y, theta] = *max_particle; // Assuming this method exists in CoreSLAM
-            // RCLCPP_INFO(this->get_logger(), "Publishing map tf");
+            if (!max_particle) return;
+    
+            // Get the best particle's pose in map coordinates
+            const auto& [x, y, theta] = *max_particle;
+    
             // Get odom -> base_link transform
-            geometry_msgs::msg::TransformStamped trans;
+            geometry_msgs::msg::TransformStamped odom_to_base;
             try {
-                trans = tf_buffer_->lookupTransform(
-                    "odom",
-                    "base_link",
-                    rclcpp::Time(0),  // lookup at the latest available time
-                    rclcpp::Duration::from_seconds(1.0)
-                );
+                odom_to_base = tf_buffer_->lookupTransform(
+                    "odom", "base_link", tf2::TimePointZero);
             } catch (const tf2::TransformException& ex) {
                 RCLCPP_WARN(this->get_logger(), "Transform lookup failed: %s", ex.what());
                 return;
             }
     
-            // Compose transformation: map -> base_link (pose estimate)
-            Eigen::Affine3d map_to_base = Eigen::Translation3d(x, y, 0) * Eigen::AngleAxisd(theta, Eigen::Vector3d::UnitZ());
+            auto [map_center_x, map_center_y] = slam_.get_map_center();
     
-            // Compose transformation: odom -> base_link (from TF)
-            Eigen::Affine3d odom_to_base;
-            odom_to_base.translation() = Eigen::Vector3d(trans.transform.translation.x, trans.transform.translation.y, trans.transform.translation.z);
+            // Compute map -> odom transform
+            geometry_msgs::msg::TransformStamped map_to_odom;
+            map_to_odom.header.stamp = this->get_clock()->now();
+            map_to_odom.header.frame_id = "map";
+            map_to_odom.child_frame_id = "odom";
+    
+            // Account for map origin in the transform
+            map_to_odom.transform.translation.x = x - map_center_x;
+            map_to_odom.transform.translation.y = y - map_center_y;
+            map_to_odom.transform.translation.z = 0.0;
+    
             tf2::Quaternion q;
-            tf2::fromMsg(trans.transform.rotation, q);
-            tf2::Matrix3x3 mat(q);
-
-            Eigen::Matrix3d eigen_rotation;
-            for (int i = 0; i < 3; ++i)
-                for (int j = 0; j < 3; ++j)
-                    eigen_rotation(i, j) = mat[i][j];
-
-            odom_to_base.linear() = eigen_rotation;
+            q.setRPY(0, 0, theta);
+            map_to_odom.transform.rotation = tf2::toMsg(q);
     
-            // Calculate map -> odom = map -> base * inverse(odom -> base)
-            Eigen::Affine3d base_to_odom = odom_to_base.inverse();
-            Eigen::Affine3d map_to_odom = map_to_base * base_to_odom;
-    
-            // Extract the translation and rotation from the resulting matrix
-            Eigen::Vector3d translation = map_to_odom.translation();
-            Eigen::Quaterniond rotation(map_to_odom.rotation());
-    
-            // Create the transform message
-            geometry_msgs::msg::TransformStamped tf_msg;
-            tf_msg.header.stamp = this->get_clock()->now();
-            tf_msg.header.frame_id = "map";
-            tf_msg.child_frame_id = "odom";
-    
-            tf_msg.transform.translation.x = translation.x();
-            tf_msg.transform.translation.y = translation.y();
-            tf_msg.transform.translation.z = translation.z();
-            tf_msg.transform.rotation.x = rotation.x();
-            tf_msg.transform.rotation.y = rotation.y();
-            tf_msg.transform.rotation.z = rotation.z();
-            tf_msg.transform.rotation.w = rotation.w();
-    
-            // Publish the transform
-            tf_broadcaster_->sendTransform(tf_msg);
+            // Compose with odom->base to get proper map->base relationship
+            tf_broadcaster_->sendTransform(map_to_odom);
     
         } catch (const std::exception& e) {
             RCLCPP_WARN(this->get_logger(), "TF broadcast error: %s", e.what());
@@ -229,27 +201,33 @@ private:
         auto msg = nav_msgs::msg::OccupancyGrid();
         msg.header.stamp = this->get_clock()->now();
         msg.header.frame_id = "map";
-
+    
         auto map_data = slam_.get_main_map();
         auto origin = slam_.get_map_origin();
         auto shape = slam_.get_map_shape();
         float resolution = slam_.get_map_resolution();
-
+    
         msg.info.resolution = resolution;
         msg.info.width = shape[1];
         msg.info.height = shape[0];
+        
+        // Critical change: Set the origin to the actual map origin
         msg.info.origin.position.x = origin[0];
         msg.info.origin.position.y = origin[1];
-
-        msg.data.assign(shape[0] * shape[1], -1); // unknown cells
-
-        for (const auto& [grid_map, _] : *map_data) {
-            int index = grid_map.first * shape[1] + grid_map.second;
+        msg.info.origin.position.z = 0.0;
+        msg.info.origin.orientation.w = 1.0;  // No rotation
+    
+        // Initialize map data (-1 = unknown)
+        msg.data.assign(shape[0] * shape[1], -1);
+    
+        // Fill in occupied cells
+        for (const auto& [grid_coords, world_coords] : *map_data) {
+            int index = grid_coords.first * shape[1] + grid_coords.second;
             if (index >= 0 && index < msg.data.size()) {
-                msg.data[index] = 100; // occupied
+                msg.data[index] = 100; // Occupied
             }
         }
-
+    
         map_pub_->publish(msg);
     }
 };
