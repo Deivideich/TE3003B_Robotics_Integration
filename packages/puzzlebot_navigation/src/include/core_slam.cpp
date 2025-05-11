@@ -1,6 +1,7 @@
 // #define DEBUG_RESAMPLE
 // #define DEBUG_WEIGHT
 
+#include "puzzlebot_navigation/slam/core_slam.h"
 #include <iostream>
 #include <stdio.h>
 #include <random>
@@ -12,398 +13,359 @@
 #include <unordered_map>
 #include <memory>
 
-#include "mcl_utils.h"
 
 
-// This function currently uses a CDF resample strategy in which a vector of scores
-// is built from the weights and then a random number is generated using a uniform
-// distribution. The index of the score that is greater than the random number is
-// used to select the particle. The selected particle is then added to a vector of
-// sampled particles. Finally, a random number is generated to select a particle
-// from the sampled particles and noise is added to the selected particle to create
-// all the resampled particles
-// TODO: Change the resampling strategy to a more efficient one
-bool resample_particles(
-    int num_particles, int num_dimensions, float theta_noise, float trans_noise,
-    float* weights, float* particles,
-    float* resampled_particles) {
-    try {
-        std::vector<float> particle_scores(num_particles);
-        std::vector<std::vector<float>> particles_sampled;
-        float score_base = 0.0;
+namespace puzzlebot_navigation
+{
+    namespace SLAM
+    {
+        CoreSLAM::CoreSLAM(
+            int num_particles, int num_dimensions,
+            float theta_noise, float trans_noise) :
+            num_particles_(num_particles),num_dimensions_(num_dimensions),
+            theta_noise_(theta_noise), trans_noise_(trans_noise)
+        {
+            map_resolution_ = 0.1; // Default value
+            particles_ = std::make_shared<std::vector<Particle>>(num_particles);
+            weights_ = std::make_shared<std::vector<float>>(num_particles);
+            main_map_ = std::make_shared<uset_pair>();
+            particle_map_ = std::unordered_map<int, std::shared_ptr<uset_pair>>();
 
-        // Build the CDF (cumulative distribution function) from weights
-        for (int i = 0; i < num_particles; i++) {
-            score_base += weights[i];
-            particle_scores[i] = score_base;
+            std::cout << "CoreSLAM initialized with parameters: "
+                << "num_particles=" << num_particles_ 
+                << ", num_dimensions=" << num_dimensions_ 
+                << ", theta_noise=" << theta_noise_ << std::endl;
+
+            initialize_particles();
         }
 
-        std::mt19937 gen(std::random_device{}());
-        std::uniform_real_distribution<float> dart(0, score_base);
+        CoreSLAM::CoreSLAM() :
+            num_particles_(1000), num_dimensions_(3),
+            theta_noise_(0.01), trans_noise_(0.01)
+        {
+            particles_ = std::make_shared<std::vector<Particle>>(num_particles_);
+            weights_ = std::make_shared<std::vector<float>>(num_particles_);
+            main_map_ = std::make_shared<uset_pair>();
+            particle_map_ = std::unordered_map<int, std::shared_ptr<uset_pair>>();
 
-        // Perform resampling wheel (low variance resampling)
-        for (int i = 0; i < num_particles; i++) {
-            float random_value = dart(gen);
-            int index = std::lower_bound(particle_scores.begin(), particle_scores.end(), random_value) - particle_scores.begin();
+            initialize_particles();
+        } 
 
-            std::vector<float> dump_particle;
-            for (int j = 0; j < num_dimensions; j++) {
-                dump_particle.push_back(particles[index * num_dimensions + j]);
+        void CoreSLAM::initialize_particles()
+        {
+            for (int i = 0; i < num_particles_; i++) {
+                (*particles_)[i] = std::make_tuple(0,0,0); // Initialize particles to (0, 0, 0)
+                (*weights_)[i] = 1.0f / num_particles_; // Initialize weights uniformly
             }
-            particles_sampled.push_back(dump_particle);
+        }
+
+
+        void CoreSLAM::updateMapParams(){
+            if (recorded_data.empty() || recorded_data.size() != 4) {
+                std::cerr << "Error: recorded_data does not comply especifications!" << std::endl;
+                return;
+            } 
+            float xmin, ymin, xmax, ymax;
+            xmin = recorded_data[0];
+            ymin = recorded_data[1];
+            xmax = recorded_data[2];
+            ymax = recorded_data[3];
+
+            map_origin_ = {xmin * map_resolution_, ymin * map_resolution_};
+            map_shape_ = {int((ymax - ymin) / map_resolution_) + 1, int((xmax - xmin) / map_resolution_) + 1};
+
+            std::cout << "Map parameters updated: "
+                << "origin=(" << map_origin_[0] << ", " << map_origin_[1] << "), "
+                << "shape=(" << map_shape_[0] << ", " << map_shape_[1] << ")" << std::endl;
+        }
+
+        void CoreSLAM::motion_update(float dx, float dy, float dtheta)
+        {
+            float delta_trans = std::sqrt(dx * dx + dy * dy);
+            float delta_rot = std::atan2(dy, dx);
+
+            float trans_noise_coeff = trans_noise_ * 0.2 + theta_noise_ * 0.2;
+            float rot_noise_coeff = theta_noise_ * 0.2 + trans_noise_ * 0.2;
+
+            std::mt19937 gen(std::random_device{}());
+            std::normal_distribution<float> trans_noise_dist(0, trans_noise_coeff);
+            std::normal_distribution<float> rot_noise_dist(0, rot_noise_coeff);
+
+            std::cout << "Motion update: dx=" << dx << ", dy=" << dy << ", dtheta=" << dtheta << std::endl;
+            for (auto& particle : *particles_) {
+                auto [x, y, theta] = particle;
+
+                float delta_rot1 = std::atan2(dy, dx) - theta;
+                float delta_rot2 = dtheta - delta_rot1;
+
+                float delta_trans_noisy = delta_trans + trans_noise_dist(gen);
+                float delta_rot1_noisy = delta_rot1 + rot_noise_dist(gen);
+                float delta_rot2_noisy = delta_rot2 + rot_noise_dist(gen);
+
+                float x_new = x + delta_trans_noisy * std::cos(theta + delta_rot1_noisy);
+                float y_new = y + delta_trans_noisy * std::sin(theta + delta_rot1_noisy);
+                float theta_new = theta + delta_rot1_noisy + delta_rot2_noisy;
+
+                // Normalize theta to [-π, π]
+                while (theta_new > M_PI) theta_new -= 2.0f * M_PI;
+                while (theta_new < -M_PI) theta_new += 2.0f * M_PI;
+
+                particle = std::make_tuple(x_new, y_new, theta_new);
+            }
+        }
+
+
+        // This function currently uses a CDF resample strategy in which a vector of scores
+        // is built from the weights and then a random number is generated using a uniform
+        // distribution. The index of the score that is greater than the random number is
+        // used to select the particle. The selected particle is then added to a vector of
+        // sampled particles. Finally, a random number is generated to select a particle
+        // from the sampled particles and noise is added to the selected particle to create
+        // all the resampled particles
+        // TODO: Change the resampling strategy to a more efficient one
+        bool CoreSLAM::resample_particles() 
+        {
+            try {
+                std::vector<float> particle_scores(num_particles_);
+                std::vector<Particle> particles_sampled;
+                float score_base = 0.0;
+                float sum_squared_weights = 0.0;
+
+                // Build the CDF (cumulative distribution function) from weights
+                for (int i = 0; i < num_particles_; i++) {
+                    score_base += (*weights_)[i];
+                    sum_squared_weights += std::pow((*weights_)[i], 2);
+                    particle_scores[i] = score_base;
+                }
+
+                // float neff = 1.0 / sum_squared_weights;
+                // if (neff > num_particles_ / 2.0) {
+                //     std::cout << "Effective sample size is low, resampling..." << std::endl;
+                // } else {
+                //     std::cout << "Effective sample size is sufficient, no resampling needed." << std::endl;
+                //     return false;
+                // }
+
+                std::mt19937 gen(std::random_device{}());
+                std::uniform_real_distribution<float> dart(0, score_base);
+                std::unordered_set<int> selected_particle_ids;
+
+                // Perform resampling wheel (low variance resampling)
+                for (int i = 0; i < num_particles_; i++) {
+                    float random_value = dart(gen);
+                    int index = std::lower_bound(particle_scores.begin(), particle_scores.end(), random_value) - particle_scores.begin();
+                    selected_particle_ids.insert(index);
+                    
+                    const auto& particle = (*particles_)[index];
+                    auto [x, y, theta] = particle;
+                    particles_sampled.push_back({x,y,theta});
+                }
+
+                // After resampling, update main_map_
+                std::cout << "Resampling done. Main map size: " << main_map_->size() << std::endl;  // Check size
+                // main_map_->clear();
+                // for (const int id : selected_particle_ids) {
+                //     const auto& particle_cells = particle_map_[id];
+                //     if (!particle_cells) continue;
+
+                //     for (const auto& coord : *particle_cells) {
+                //         main_map_->insert(coord);
+                //         recorded_data[0] = std::min(recorded_data[0], coord.second.second);
+                //         recorded_data[1] = std::min(recorded_data[1], coord.second.first);
+                //         recorded_data[2] = std::max(recorded_data[2], coord.second.second);
+                //         recorded_data[3] = std::max(recorded_data[3], coord.second.first);
+                //     }
+                // }
+
+                // // Clear the particle_map_ to avoid memory leaks
+                // for (const auto& pair : particle_map_) {
+                //     pair.second->clear();
+                // }
+                // particle_map_.clear();
+                
+                std::vector<Particle> resampled_particles(num_particles_);
+                std::uniform_int_distribution<int> particle_index_distribution(0, num_particles_ - 1);
+                std::normal_distribution<float> trans_noise_distribution(0, trans_noise_);
+                std::normal_distribution<float> theta_noise_distribution(-theta_noise_, theta_noise_);
+
+                // Add gaussian noise and write to resampled_particles using uniform distribution to select the particle
+                for (int i = 0; i < num_particles_; i++) {
+                    std::size_t number = particle_index_distribution(gen);
+                    const auto& selected = particles_sampled[number];
+
+                    auto [dump_x, dump_y, dump_theta] = selected;
+                    float x = dump_x + trans_noise_distribution(gen);
+                    float y = dump_y + trans_noise_distribution(gen);
+                    float theta = dump_theta + theta_noise_distribution(gen);
+                    
+                    resampled_particles[i] = std::make_tuple(x, y, theta);
+                }
+
+                // Update the particles_ with the resampled particles
+                swap(*particles_, resampled_particles);
+                // Clear the resampled_particles to avoid memory leaks
+                resampled_particles.clear();
+
+                return true;
+            } catch (const std::exception& e) {
+                std::cerr << "Exception in resample_particles: " << e.what() << std::endl;
+                return false;
+            }
+        }
+
+        bool CoreSLAM::initial_guess(
+            std::shared_ptr<std::vector<float>> scan_angles, std::shared_ptr<std::vector<float>> scan_ranges, 
+            int scan_size, float max_range)
+        {
+            try
+            {
+                if (!particles_) return false;
+
+                // Assume initial pose is (0, 0, 0)
+                auto& particle = (*particles_)[0];
+                particle = std::make_tuple(0.0f, 0.0f, 0.0f);
+
+                for (int j = 0; j < scan_size; ++j){
+                    float ray_angle = (*scan_angles)[j];
+                    float range = (*scan_ranges)[j];
+                    std::cout << "Range: " << range << " Angle: " <<ray_angle << std::endl;
+                    if (range >= max_range || range < 0.0f) continue;
+
+                    float beam_x = range * std::cos(ray_angle);
+                    float beam_y = range * std::sin(ray_angle);
+
+                    int map_x = static_cast<int>(beam_x / map_resolution_);
+                    int map_y = static_cast<int>(beam_y / map_resolution_);
+                    main_map_->insert({{map_x, map_y}, {beam_x, beam_y}});
+                    std::cout << "Inserted map: " << map_x << ", " << map_y << " beam: " << beam_x << ", " << beam_y << std::endl;
+
+                    recorded_data[0] = std::min(recorded_data[0], beam_x);
+                    recorded_data[1] = std::min(recorded_data[1], beam_y);
+                    recorded_data[2] = std::max(recorded_data[2], beam_x);
+                    recorded_data[3] = std::max(recorded_data[3], beam_y);
+                }
+                std::cout << "Initial guess done. Main map size: " << main_map_->size() << std::endl;  // Check size
+
+                return true;
+            }
+            catch(const std::exception& e)
+            {
+                std::cerr << e.what() << '\n';
+                return false;
+            }
         }
         
-        std::uniform_int_distribution<int> particle_index_distribution(0, num_particles - 1);
-        std::normal_distribution<float> trans_noise_distribution(0, trans_noise);
-        std::normal_distribution<float> theta_noise_distribution(-theta_noise, theta_noise);
-
-        // Add gaussian noise and write to resampled_particles using uniform distribution to select the particle
-        for (int i = 0; i < num_particles; i++) {
-            std::size_t number = particle_index_distribution(gen);
-            std::vector<float>& dump_particle = particles_sampled[number];
-            float x = dump_particle[0] + trans_noise_distribution(gen);
-            float y = dump_particle[1] + trans_noise_distribution(gen);
-            float theta = dump_particle[2] + theta_noise_distribution(gen);
-            
-            resampled_particles[i * num_dimensions + 0] = x;
-            resampled_particles[i * num_dimensions + 1] = y;
-            resampled_particles[i * num_dimensions + 2] = theta;
-        }
-            
-        return true;
-    } catch (const std::exception& e) {
-        std::cerr << "Exception in resample_particles: " << e.what() << std::endl;
-        return false;
-    }
-}
-
-// Function to calculate the weight of each particle based on the laser scan and map
-// This function uses the occupancy grid map and for ach of the particles it models 
-// the laser scan rays and checks if they hit an obstacle or not, depending on this
-// the weight of the particle is calculated to finally normalize these weights
-bool weight_particles(
-    int* map_array, float* map_origin, int* map_shape, float map_resolution, 
-    float* scan_angles, float* scan_ranges, int scan_size, float max_range,
-    int num_particles, int num_dimensions, float* particles, 
-    float* max_particle, float* weights){
-    try{
-
-        float origin_x = map_origin[0];
-        float origin_y = map_origin[1];
-
-        int map_height = map_shape[0];
-        int map_width = map_shape[1];
-        float max_score = 0.0;
-
-        for (size_t i = 0; i < num_particles; i++){
-            float x = particles[i * num_dimensions + 0];
-            float y = particles[i * num_dimensions + 1];
-            float theta = particles[i * num_dimensions + 2];
-            float particle_weight = 0.0;
-            
-            // For each particle calculate the weight based on the laser scan hits and map occupancy grid
-            for (size_t j = 0; j < scan_size; j++){
-                float angle = scan_angles[j];
-                float range = scan_ranges[j];
-
-                if (range >= max_range || range < 0.0) continue;
-                float ray_angle = theta + angle;
-
-                // Normalize angle to [-π, π]
-                while (ray_angle > M_PI)
-                ray_angle -= 2.0f * M_PI;
-                while (ray_angle < -M_PI)
-                ray_angle += 2.0f * M_PI;
-
-                // Calculate the beam endpoint accding to the particle pose
-                float beam_x = x + range * std::cos(ray_angle);
-                float beam_y = y + range * std::sin(ray_angle);
-
-                // Check if the beam is within the map bounds
-                int map_x = int((beam_x - origin_x) / map_resolution);
-                int map_y = int((beam_y - origin_y) / map_resolution);
-                if (map_x < 0 or map_x >= map_width or map_y < 0 or map_y >= map_height) continue;
-                
-                // Check value of the map cell 
-                int cell_value = map_array[map_y * map_width + map_x];
-                particle_weight += cell_value >= 100 ? 1.0 : 0.0;
-            }
-    
-            weights[i] = particle_weight;
-        }
-
-        // Normalize weights
-        float sum = 0.0;
-        for (size_t i = 0; i < num_particles; i++){
-            sum += weights[i];
-        }
-
-        if (sum > 0.0){
-            for (size_t i = 0; i < num_particles; i++){
-                weights[i] /= sum;
-
-                // Find the maximum weight and corresponding particle
-                if (weights[i] > max_score){
-                    max_score = weights[i];
-    
-                    max_particle[0] = particles[i * num_dimensions + 0];
-                    max_particle[1] = particles[i * num_dimensions + 1];
-                    max_particle[2] = particles[i * num_dimensions + 2];
+        
+        bool CoreSLAM::weight_slam_particles(
+            std::shared_ptr<std::vector<float>> scan_angles, std::shared_ptr<std::vector<float>> scan_ranges, 
+            int scan_size, float max_range, std::shared_ptr<Particle> max_particle){
+            try{
+                if (!main_map_){ 
+                    std::cerr << "Main map is not initialized!" << std::endl;
+                    return false;
+                } 
+                if (main_map_->empty()){
+                    std::cerr << "Main map is empty!" << std::endl;
+                    return false;
                 }
-            }
-        } else {
-            std::cout << "Warning: All weights are zero!" << std::endl;
-            for (size_t i = 0; i < num_particles; i++){
-                weights[i] = 1.0 / num_particles;
-            }
-        }
 
-        return true;
-    } catch (const std::exception& e) {
-        std::cerr << "Exception in resample_particles: " << e.what() << std::endl;
-        return false;
-    }
-}
+                float origin_x = map_origin_[0];
+                float origin_y = map_origin_[1];
 
-bool weight_slam_particles(
-    int* map_array, float* map_origin, int* map_shape, float map_resolution, 
-    float* scan_angles, float* scan_ranges, int scan_size, float max_range,
-    int num_particles, int num_dimensions, float* particles,
-    float* max_particle, float* weights,
-    int* new_map_array, float* new_map_origin, int* new_map_shape){
-    try{
-        struct hashFunction
-        {
-            size_t operator()(const std::pair<int,int> &key) const
-            {
-                auto [x, y] = key;
-                return std::hash<int>()(x) ^ std::hash<int>()(y);
-            }
-        };
-
-        typedef std::unordered_set<std::pair<int,int>, hashFunction> uset_pair;
-
-        uset_pair map_coords;
-        std::unordered_map<int, std::shared_ptr<uset_pair>> particle_map;
+                int map_height = map_shape_[0];
+                int map_width = map_shape_[1];
+                float max_score = 0.0;
 
 
-        float origin_x = map_origin[0];
-        float origin_y = map_origin[1];
+                for (size_t i = 0; i < num_particles_; i++){
+                    const auto& particle = (*particles_)[i];
+                    auto [x, y, theta] = particle;
+                    std::cout << "Particle: " << i << " X: " << x << " Y: " << y << " Theta: " << theta << std::endl;
+                    float particle_weight = 0.0;
+                    particle_map_[i] = std::make_shared<uset_pair>();
+                    // For each particle calculate the weight based on the laser scan hits and map occupancy grid
+                    for (size_t j = 0; j < scan_size; j++){
+                        float angle = (*scan_angles)[j];
+                        float range = (*scan_ranges)[j];
 
-        int map_height = map_shape[0];
-        int map_width = map_shape[1];
-        float max_score = 0.0;
+                        if (range >= max_range || range < 0.0) continue;
+                        float ray_angle = theta + angle;
+                        // Normalize angle to [-π, π]
+                        while (ray_angle > M_PI)
+                        ray_angle -= 2.0f * M_PI;
+                        while (ray_angle < -M_PI)
+                        ray_angle += 2.0f * M_PI;
+                        // Calculate the beam endpoint accding to the particle pose
+                        float beam_x = x + range * std::cos(ray_angle);
+                        float beam_y = y + range * std::sin(ray_angle);
 
-        // Add all map_array values to the map_coords set
-        for (int y = 0; y < map_height; y++) {
-            for (int x = 0; x < map_width; x++) {
-                int cell_value = map_array[y * map_width + x];
-                
-                if (cell_value >= 100) map_coords.insert({y, x});
-            }
-        }
-
-
-        for (size_t i = 0; i < num_particles; i++){
-            float x = particles[i * num_dimensions + 0];
-            float y = particles[i * num_dimensions + 1];
-            float theta = particles[i * num_dimensions + 2];
-            float particle_weight = 0.0;
-            particle_map[i] = std::make_unique<uset_pair>();
-            // For each particle calculate the weight based on the laser scan hits and map occupancy grid
-            for (size_t j = 0; j < scan_size; j++){
-                float angle = scan_angles[j];
-                float range = scan_ranges[j];
-
-                if (range >= max_range || range < 0.0) continue;
-                float ray_angle = theta + angle;
-
-                // Normalize angle to [-π, π]
-                while (ray_angle > M_PI)
-                ray_angle -= 2.0f * M_PI;
-                while (ray_angle < -M_PI)
-                ray_angle += 2.0f * M_PI;
-
-                // Calculate the beam endpoint accding to the particle pose
-                float beam_x = x + range * std::cos(ray_angle);
-                float beam_y = y + range * std::sin(ray_angle);
-
-                // Check if the beam is within the map bounds
-                int map_x = int((beam_x - origin_x) / map_resolution);
-                int map_y = int((beam_y - origin_y) / map_resolution);
-                if (map_x < 0 or map_x >= map_width or map_y < 0 or map_y >= map_height) continue;
-                
-                // Check value of the map cell 
-                particle_weight += map_coords.find({map_y,map_x}) != map_coords.end() ? 1.0 : 0.0;
-                
-                int cell_value = map_array[map_y * map_width + map_x];
-                
-                if (cell_value >= 100) particle_map[i]->insert({map_y, map_x});
-            }
-    
-            weights[i] = particle_weight;
-        }
-
-        // Normalize weights
-        float sum = 0.0;
-        for (size_t i = 0; i < num_particles; i++){
-            sum += weights[i];
-        }
-
-        if (sum > 0.0){
-            for (size_t i = 0; i < num_particles; i++){
-                weights[i] /= sum;
-
-                // Find the maximum weight and corresponding particle
-                if (weights[i] > max_score){
-                    max_score = weights[i];
-    
-                    max_particle[0] = particles[i * num_dimensions + 0];
-                    max_particle[1] = particles[i * num_dimensions + 1];
-                    max_particle[2] = particles[i * num_dimensions + 2];
+                        // Check if the beam is within the map bounds
+                        int map_x = static_cast<int>((beam_x - origin_x) / map_resolution_);
+                        int map_y = static_cast<int>((beam_y - origin_y) / map_resolution_);                        
+                        // Check value of the map cell 
+                        particle_weight += main_map_->find({map_y, map_x}) != main_map_->end() ? 1.0 : 0.0;
+                        particle_map_[i]->insert({{map_x, map_y}, {beam_x, beam_y}});
+                    }
+                    
+                    // std::cout << "Particle: " << i << " Weight: " << particle_weight << std::endl;
+                    (*weights_)[i] = particle_weight;
                 }
+
+                // Normalize weights_
+                float sum = 0.0;
+                for (size_t i = 0; i < num_particles_; i++){
+                    sum += (*weights_)[i];
+                }
+
+                int max_index = 0;
+                if (sum > 0.0){
+                    for (size_t i = 0; i < num_particles_; i++){
+                        (*weights_)[i] /= sum;
+
+                        // Find the maximum weight and corresponding particle
+                        if ((*weights_)[i] > max_score){
+                            max_score = (*weights_)[i];
+                            max_index = i;
+                            const auto& particle = (*particles_)[i];
+                            auto [x, y, theta] = particle;
+                            max_particle = std::make_shared<Particle>(x, y, theta);
+                        }
+                    }
+
+                    main_map_->clear();
+                    const auto& particle_cells = particle_map_[max_index];
+                    if (!particle_cells) return false;
+
+                    for (const auto& coord : *particle_cells) {
+                        main_map_->insert(coord);
+                        recorded_data[0] = std::min(recorded_data[0], coord.second.second);
+                        recorded_data[1] = std::min(recorded_data[1], coord.second.first);
+                        recorded_data[2] = std::max(recorded_data[2], coord.second.second);
+                        recorded_data[3] = std::max(recorded_data[3], coord.second.first);
+                    }
+                    std::cout << "{" << recorded_data[0] << ", " << recorded_data[1] << ", " 
+                        << recorded_data[2] << ", " << recorded_data[3] << "}" << std::endl;
+
+                    // Clear the particle_map_ to avoid memory leaks
+                    for (const auto& pair : particle_map_) {
+                        pair.second->clear();
+                    }
+                    particle_map_.clear();
+
+                    
+                } else {
+                    std::cout << "Warning: All weights are zero!" << std::endl;
+                    for (size_t i = 0; i < num_particles_; i++){
+                        (*weights_)[i] = 1.0 / num_particles_;
+                    }
+                }
+
+                return true;
+            } catch (const std::exception& e) {
+                std::cerr << "Exception in resample_particles: " << e.what() << std::endl;
+                return false;
             }
-        } else {
-            std::cout << "Warning: All weights are zero!" << std::endl;
-            for (size_t i = 0; i < num_particles; i++){
-                weights[i] = 1.0 / num_particles;
-            }
         }
+    } // namespace SLAM
+} // namespace puzzlebot_navigation
 
-        return true;
-    } catch (const std::exception& e) {
-        std::cerr << "Exception in resample_particles: " << e.what() << std::endl;
-        return false;
-    }
-}
-
-
-#ifdef DEBUG_RESAMPLE
-int main(int argc, char** argv) {
-    std::cout << "START" << std::endl;
-
-    int num_particles = 300;
-    int num_dimensions = 3;
-    float theta_noise = float(M_PI/16.0);   // radians
-    float trans_noise = 0.05f;  // meters
-
-    float weights[num_particles];
-    float particles[num_particles * num_dimensions];
-    float* resampled_particles = new float[num_particles * num_dimensions];
-
-    // Initialize weights and particles
-    for (int i = 0; i < num_particles; i++) {
-        weights[i] = 1.0f;
-        for (int j = 0; j < num_dimensions; j++) {
-            particles[i * num_dimensions + j] = static_cast<float>(i + j);
-        }
-    }
-
-    // normalize weights
-    float sum = 0.0f;
-    for (int i = 0; i < num_particles; i++) {
-        sum += weights[i];
-    }
-    if (sum > 0.0f) {
-        for (int i = 0; i < num_particles; i++) {
-            weights[i] /= sum;
-        }
-    } else {
-        std::cout << "Warning: All weights are zero!" << std::endl;
-        for (int i = 0; i < num_particles; i++) {
-            weights[i] = 1.0f / num_particles;
-        }
-    }
-
-    std::cout << "Resampling..." << std::endl;
-    bool result = resample_particles(num_particles, num_dimensions, theta_noise, trans_noise,
-                                     weights, particles, resampled_particles);
-
-    if (result) {
-        std::cout << "Resampling successful!" << std::endl;
-        for (int i = 0; i < num_particles; i++) {
-            std::cout << "Resampled Particle " << i << ": ";
-            for (int j = 0; j < num_dimensions; j++) {
-                std::cout << resampled_particles[i * num_dimensions + j] << " ";
-            }
-            std::cout << std::endl;
-        }
-    } else {
-        std::cout << "Resampling failed!" << std::endl;
-    }
-
-    // Only delete memory that was dynamically allocated
-    delete[] resampled_particles;
-
-    std::cout << "END" << std::endl;
-    return 0;
-}
-#endif
-
-#ifdef DEBUG_WEIGHT
-int main(int argc, char** argv) {
-    std::cout << "START" << std::endl;
-
-    int map_width = 100;
-    int map_height = 100;
-    float map_resolution = 0.1f;
-    int map_array[map_width * map_height];
-    float map_origin[2] = {0.0f, 0.0f};
-    int map_shape[2] = {int(map_height), int(map_width)};
-
-    // Initialize a simple map (all cells set to 255)
-    for (int i = 0; i < map_width * map_height; i++) {
-        map_array[i] = 255;
-    }
-
-    int num_particles = 300;
-    int num_dimensions = 3;
-    float particles[num_particles * num_dimensions];
-    float weights[num_particles];
-    float max_particle[num_dimensions];
-
-    // Initialize particles
-    for (int i = 0; i < num_particles; i++) {
-        particles[i * num_dimensions + 0] = static_cast<float>(i % map_width) * map_resolution;
-        particles[i * num_dimensions + 1] = static_cast<float>(i / map_width) * map_resolution;
-        particles[i * num_dimensions + 2] = 0.0f; // Orientation
-        weights[i] = 0.0f;
-    }
-
-    int num_scans = 10;
-    float scan_angles[num_scans];
-    float scan_ranges[num_scans];
-    float max_range = 5.0f;
-
-    // Initialize scan angles and ranges
-    for (int i = 0; i < num_scans; i++) {
-        scan_angles[i] = -M_PI / 4 + i * (M_PI / 2 / (num_scans - 1));
-        scan_ranges[i] = max_range / 2.0f; // Fixed range for simplicity
-    }
-
-    std::cout << "Calculating weights..." << std::endl;
-    bool result = weight_particles(map_array, map_origin, map_shape, map_resolution,
-                                   scan_angles, scan_ranges, map_width * map_height, max_range,
-                                   num_particles, num_dimensions, particles,
-                                   max_particle, weights);
-
-    if (result) {
-        std::cout << "Weight calculation successful!" << std::endl;
-        std::cout << "Max Particle: ";
-        for (int i = 0; i < num_dimensions; i++) {
-            std::cout << max_particle[i] << " ";
-        }
-        std::cout << std::endl;
-
-        for (int i = 0; i < num_particles; i++) {
-            std::cout << "Particle " << i << " Weight: " << weights[i] << std::endl;
-        }
-    } else {
-        std::cout << "Weight calculation failed!" << std::endl;
-    }
-
-    std::cout << "END" << std::endl;
-
-    return 0;
-}
-#endif
