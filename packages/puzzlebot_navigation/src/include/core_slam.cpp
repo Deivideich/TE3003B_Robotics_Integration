@@ -39,7 +39,7 @@ namespace puzzlebot_navigation
                 << ", theta_noise=" << theta_noise_ << std::endl;
 
              // Initialize with reasonable default size centered around (0,0)
-                map_origin_ = {-5.0f, -5.0f};  // 5m buffer in each direction
+                map_origin_ = {-10.0f, -10.0f};  // 5m buffer in each direction
                 map_shape_ = {10, 10};         // 10x10m initial size
                 recorded_data = {INFINITY, INFINITY, -INFINITY, -INFINITY};
                 
@@ -451,7 +451,7 @@ namespace puzzlebot_navigation
                         float beam_y = y + range * std::sin(theta + (*scan_angles)[j]);
         
                         auto [map_x, map_y] = worldToMap(beam_x, beam_y);
-                        main_map_->insert({{map_x, map_y}, {beam_x, beam_y}});
+                        main_map_->insert({{map_y, map_x}, {beam_y, beam_x}});
                     }
                 }
         
@@ -631,7 +631,7 @@ namespace puzzlebot_navigation
                         }
         
                         // Store observation for map update
-                        particle_map_[i]->insert({{map_x, map_y}, {beam_x, beam_y}});
+                        particle_map_[i]->insert({{map_y, map_x}, {beam_y, beam_x}});
                     }
         
                     (*weights_)[i] = particle_weight;
@@ -696,20 +696,7 @@ namespace puzzlebot_navigation
                         new_recorded_data[2] = std::max(new_recorded_data[2], coords.first);
                         new_recorded_data[3] = std::max(new_recorded_data[3], coords.second);
                     }
-                }
-            
-                // Check if we need to expand the map
-                float expand_threshold = 0.5f; // meters
-                bool need_expand = false;
-                
-                // Check all boundaries
-                if (new_recorded_data[0] < map_origin_[0] + expand_threshold) {
-                    need_expand = true;
-                    float expand = map_origin_[0] - new_recorded_data[0] + expand_threshold;
-                    map_origin_[0] -= expand;
-                    map_shape_[1] += static_cast<int>(expand / map_resolution_);
-                }
-                // Similar checks for other boundaries...
+                }        
             
                 // Apply updates
                 main_map_ = new_main_map;

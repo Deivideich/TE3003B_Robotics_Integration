@@ -155,12 +155,12 @@ def generate_launch_description():
             output="screen",
         ),
 
-        Node(
-            package="puzzlebot_navigation",
-            executable="custom_map_server.py",
-            name="custom_map_server",
-            output="screen",
-        ),
+        # Node(
+        #     package="puzzlebot_navigation",
+        #     executable="custom_map_server.py",
+        #     name="custom_map_server",
+        #     output="screen",
+        # ),
         
         # Node(
         #     package="puzzlebot_navigation",

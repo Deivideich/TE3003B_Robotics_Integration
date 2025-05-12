@@ -119,6 +119,11 @@ private:
         float dy = y - last_odom_.position.y;
         float dtheta = theta - tf2::getYaw(last_odom_.orientation);
 
+        // std::vector<float> prev_origin = slam_.get_map_origin();
+
+        // // Apply delta to the map origin
+        // slam_.set_map_origin({prev_origin[0] + dx, prev_origin[1] + dy});   
+
         float delta_trans = std::sqrt(dx*dx + dy*dy);
         float delta_rot = std::abs(dtheta);
 
@@ -130,8 +135,8 @@ private:
 
             publish_particles();
             last_odom_ = pose;
-            publish_map();
         }
+        publish_map();
         
     }
 
@@ -155,46 +160,67 @@ private:
         particle_pub_->publish(msg);
     }
 
+    // void broadcast_transform() {
+    //     try {
+    //         if (!max_particle) return;
+    
+    //         // Get the best particle's pose in map coordinates
+    //         const auto& [x, y, theta] = *max_particle;
+    
+    //         // Get odom -> base_link transform
+    //         geometry_msgs::msg::TransformStamped odom_to_base;
+    //         try {
+    //             odom_to_base = tf_buffer_->lookupTransform(
+    //                 "odom", "base_link", tf2::TimePointZero);
+    //         } catch (const tf2::TransformException& ex) {
+    //             RCLCPP_WARN(this->get_logger(), "Transform lookup failed: %s", ex.what());
+    //             return;
+    //         }
+    
+    //         auto [map_center_x, map_center_y] = slam_.get_map_center();
+    
+    //         // Compute map -> odom transform
+    //         geometry_msgs::msg::TransformStamped map_to_odom;
+    //         map_to_odom.header.stamp = this->get_clock()->now();
+    //         map_to_odom.header.frame_id = "map";
+    //         map_to_odom.child_frame_id = "odom";
+    
+    //         // Account for map origin in the transform
+    //         map_to_odom.transform.translation.x = x - map_center_x;
+    //         map_to_odom.transform.translation.y = y - map_center_y;
+    //         map_to_odom.transform.translation.z = 0.0;
+    
+    //         tf2::Quaternion q;
+    //         q.setRPY(0, 0, theta);
+    //         map_to_odom.transform.rotation = tf2::toMsg(q);
+    
+    //         // Compose with odom->base to get proper map->base relationship
+    //         tf_broadcaster_->sendTransform(map_to_odom);
+    
+    //     } catch (const std::exception& e) {
+    //         RCLCPP_WARN(this->get_logger(), "TF broadcast error: %s", e.what());
+    //     }
+    // }
+
     void broadcast_transform() {
-        try {
-            if (!max_particle) return;
-    
-            // Get the best particle's pose in map coordinates
-            const auto& [x, y, theta] = *max_particle;
-    
-            // Get odom -> base_link transform
-            geometry_msgs::msg::TransformStamped odom_to_base;
-            try {
-                odom_to_base = tf_buffer_->lookupTransform(
-                    "odom", "base_link", tf2::TimePointZero);
-            } catch (const tf2::TransformException& ex) {
-                RCLCPP_WARN(this->get_logger(), "Transform lookup failed: %s", ex.what());
-                return;
-            }
-    
-            auto [map_center_x, map_center_y] = slam_.get_map_center();
-    
-            // Compute map -> odom transform
-            geometry_msgs::msg::TransformStamped map_to_odom;
-            map_to_odom.header.stamp = this->get_clock()->now();
-            map_to_odom.header.frame_id = "map";
-            map_to_odom.child_frame_id = "odom";
-    
-            // Account for map origin in the transform
-            map_to_odom.transform.translation.x = x - map_center_x;
-            map_to_odom.transform.translation.y = y - map_center_y;
-            map_to_odom.transform.translation.z = 0.0;
-    
-            tf2::Quaternion q;
-            q.setRPY(0, 0, theta);
-            map_to_odom.transform.rotation = tf2::toMsg(q);
-    
-            // Compose with odom->base to get proper map->base relationship
-            tf_broadcaster_->sendTransform(map_to_odom);
-    
-        } catch (const std::exception& e) {
-            RCLCPP_WARN(this->get_logger(), "TF broadcast error: %s", e.what());
-        }
+        // Get best particle's pose (relative to map origin)
+        if (!max_particle) return;
+
+        const auto& [x, y, theta] = *max_particle;
+        
+        geometry_msgs::msg::TransformStamped map_to_odom;
+        map_to_odom.header.stamp = now();
+        map_to_odom.header.frame_id = "map";
+        map_to_odom.child_frame_id = "odom";
+        
+        // Transform from map (starting position) to current odom
+        map_to_odom.transform.translation.x = x;
+        map_to_odom.transform.translation.y = y;
+        tf2::Quaternion q;
+        q.setRPY(0, 0, theta);
+        map_to_odom.transform.rotation = tf2::toMsg(q);
+        
+        tf_broadcaster_->sendTransform(map_to_odom);
     }
 
     void publish_map() {
@@ -204,27 +230,37 @@ private:
     
         auto map_data = slam_.get_main_map();
         auto origin = slam_.get_map_origin();
+        auto map_center = slam_.get_map_center();
         auto shape = slam_.get_map_shape();
         float resolution = slam_.get_map_resolution();
+        auto recorded_data = slam_.get_recorded_data();
     
         msg.info.resolution = resolution;
         msg.info.width = shape[1];
         msg.info.height = shape[0];
         
         // Critical change: Set the origin to the actual map origin
-        msg.info.origin.position.x = origin[0];
-        msg.info.origin.position.y = origin[1];
+        msg.info.origin.position.x = origin[0]; //origin.first;
+        msg.info.origin.position.y = origin[1]; //origin.second;
         msg.info.origin.position.z = 0.0;
         msg.info.origin.orientation.w = 1.0;  // No rotation
     
         // Initialize map data (-1 = unknown)
         msg.data.assign(shape[0] * shape[1], -1);
+
+        int origin_x_idx = static_cast<int>(floor(origin[0] / resolution));
+        int origin_y_idx = static_cast<int>(floor(origin[1] / resolution));
     
         // Fill in occupied cells
         for (const auto& [grid_coords, world_coords] : *map_data) {
-            int index = grid_coords.first * shape[1] + grid_coords.second;
+            int map_y = grid_coords.first;
+            int map_x = grid_coords.second;
+            int index = map_y * shape[1] + map_x;
+            
             if (index >= 0 && index < msg.data.size()) {
                 msg.data[index] = 100; // Occupied
+            } else {
+                RCLCPP_WARN(this->get_logger(), "Index out of bounds: %d, Map Center (%f,%f) Grid coords (%d, %d), World Coords, (%f,%f)", index, map_center.second, map_center.first, map_y, map_x, world_coords.first, world_coords.second);
             }
         }
     

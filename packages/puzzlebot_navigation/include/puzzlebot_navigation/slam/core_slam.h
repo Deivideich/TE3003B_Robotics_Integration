@@ -106,6 +106,14 @@ namespace puzzlebot_navigation
                 float get_map_resolution() const {
                     return map_resolution_;
                 }
+
+                std::vector<float> get_recorded_data() const {
+                    return recorded_data;
+                }
+
+                void set_map_origin(const std::vector<float>& origin) {
+                    map_origin_ = origin;
+                }
         };
     }        
 }
