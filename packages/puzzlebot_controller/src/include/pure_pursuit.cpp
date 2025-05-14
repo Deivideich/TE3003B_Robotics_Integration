@@ -11,9 +11,10 @@ namespace puzzlebot_controllers
         PurePursuitController::PurePursuitController(double linear_speed, double lookahead_distance) : 
         ControllerInterface(linear_speed), lookahead_distance_(lookahead_distance) {}
 
-        geometry_msgs::msg::Twist PurePursuitController::computeCommand(
+        bool PurePursuitController::computeCommand(
             const geometry_msgs::msg::PoseStamped& current_pose,
-            const std::vector<geometry_msgs::msg::PoseStamped>& path) 
+            const std::vector<geometry_msgs::msg::PoseStamped>& path,
+            geometry_msgs::msg::Twist::SharedPtr cmd) 
         {
             // Find lookahead point
             std::shared_ptr<geometry_msgs::msg::PoseStamped> lookahead = nullptr;
@@ -29,10 +30,8 @@ namespace puzzlebot_controllers
                 }
             }
 
-            geometry_msgs::msg::Twist cmd;
-
             // Stop if we are at the end
-            if (lookahead == nullptr) return cmd;
+            if (lookahead == nullptr) return true;
 
             // Transform goal to robot frame
             tf2::Transform tf_robot;
@@ -47,10 +46,10 @@ namespace puzzlebot_controllers
             double curvature = 2 * y / (lookahead_distance_  * lookahead_distance_   );
             double angular_z = linear_speed_ * curvature;
 
-            cmd.linear.x = linear_speed_;
-            cmd.angular.z = angular_z;
+            cmd->linear.x = linear_speed_;
+            cmd->angular.z = angular_z;
             
-            return cmd;
+            return false;
         }
     }
 }

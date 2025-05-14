@@ -19,9 +19,10 @@ namespace puzzlebot_controllers
             public:
                 PIDController(double linear_speed, double kP, double kD, double kI);
                 
-                geometry_msgs::msg::Twist computeCommand(
+                bool computeCommand(
                     const geometry_msgs::msg::PoseStamped& current_pose,
-                    const std::vector<geometry_msgs::msg::PoseStamped>& path) override;
+                    const std::vector<geometry_msgs::msg::PoseStamped>& path,
+                    geometry_msgs::msg::Twist::SharedPtr cmd) override;
         };
     }
 }

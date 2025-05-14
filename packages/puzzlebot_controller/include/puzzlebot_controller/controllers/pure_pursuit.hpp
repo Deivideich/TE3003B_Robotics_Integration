@@ -16,9 +16,10 @@ namespace puzzlebot_controllers
             public:
                 PurePursuitController(double linear_speed, double lookahead_distance);
 
-                geometry_msgs::msg::Twist computeCommand(
+                bool computeCommand(
                     const geometry_msgs::msg::PoseStamped& current_pose,
-                    const std::vector<geometry_msgs::msg::PoseStamped>& path) override;
+                    const std::vector<geometry_msgs::msg::PoseStamped>& path,
+                    geometry_msgs::msg::Twist::SharedPtr cmd) override;
         };
     }
 }

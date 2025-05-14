@@ -58,6 +58,9 @@ install(
     DESTINATION include
 )
 
+install(DIRECTORY launch
+  DESTINATION share/${PROJECT_NAME})
+
 # Install library and executables
 install(
     TARGETS puzzlebot_controller_include

@@ -17,9 +17,11 @@ namespace puzzlebot_controllers
 
                 virtual ~ControllerInterface() = default;
                 
-                virtual geometry_msgs::msg::Twist computeCommand(
+                virtual bool computeCommand(
                     const geometry_msgs::msg::PoseStamped& current_pose,
-                    const std::vector<geometry_msgs::msg::PoseStamped>& path) = 0;
+                    const std::vector<geometry_msgs::msg::PoseStamped>& path,
+                    geometry_msgs::msg::Twist::SharedPtr cmd
+                ) = 0;
                 
                 void resetIndex() { setPathIndex(0); }
                 

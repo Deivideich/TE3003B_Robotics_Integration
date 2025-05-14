@@ -68,9 +68,7 @@ public:
     timer_ = this->create_wall_timer(100ms, std::bind(&ControllerNode::timerCallback, this), timer_cb_group_);
 
     RCLCPP_INFO(this->get_logger(), "Waiting for planning service");
-    if (!planner_client_->wait_for_service(2s)) {
-      RCLCPP_ERROR(this->get_logger(), "Service not available after waiting");
-    }
+    while (!planner_client_->wait_for_service(2s));
     RCLCPP_INFO(this->get_logger(), "Planner server ready");
   }
 
@@ -107,7 +105,7 @@ private:
 
       auto future_result = planner_client_->async_send_request(request);
       // Set up a callback for when the future is complete
-      future_result.wait_for(250ms);
+      future_result.wait_for(2s);
       if (future_result.valid() && future_result.wait_for(0s) == std::future_status::ready) {
         auto response = future_result.get();
         current_path_ = response->path;
@@ -119,15 +117,17 @@ private:
     }
 
     if (!current_path_.empty()) {
-      auto cmd = controller_->computeCommand(*current_pose_, current_path_);
-      cmd_pub_->publish(cmd);
-
-      if (controller_->getPathIndex() == current_path_.size() - 1) {
+      geometry_msgs::msg::Twist::SharedPtr cmd = std::make_shared<geometry_msgs::msg::Twist>();
+      auto success = controller_->computeCommand(*current_pose_, current_path_, cmd);
+      
+      if (success) {
         RCLCPP_INFO(this->get_logger(), "Achieved goal!");
 
         goal_pose_ = nullptr;
         needs_planning_ = true;
       }
+
+      cmd_pub_->publish(*cmd);
     }    
   }
 

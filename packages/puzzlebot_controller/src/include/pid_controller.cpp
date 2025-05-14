@@ -7,12 +7,12 @@ namespace puzzlebot_controllers
         PIDController::PIDController(double linear_speed, double kP, double kD, double kI) : 
                              kP_(kP), kD_(kD), kI_(kI), ControllerInterface(linear_speed) {}
 
-        geometry_msgs::msg::Twist PIDController::computeCommand(
+        bool PIDController::computeCommand(
             const geometry_msgs::msg::PoseStamped& current_pose,
-            const std::vector<geometry_msgs::msg::PoseStamped>& path) 
+            const std::vector<geometry_msgs::msg::PoseStamped>& path,
+            geometry_msgs::msg::Twist::SharedPtr cmd) 
         {
-            geometry_msgs::msg::Twist cmd;
-            return cmd;
+            return false;
         }
     }
 }
