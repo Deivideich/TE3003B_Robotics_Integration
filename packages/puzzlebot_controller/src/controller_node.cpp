@@ -105,13 +105,15 @@ private:
 
       auto future_result = planner_client_->async_send_request(request);
       // Set up a callback for when the future is complete
-      future_result.wait_for(2s);
-      if (future_result.valid() && future_result.wait_for(0s) == std::future_status::ready) {
-        auto response = future_result.get();
+      while (future_result.wait_for(100ms) != std::future_status::ready);
+
+      auto response = future_result.get();
+
+      if (response->result){
         current_path_ = response->path;
         controller_->resetIndex();
       } else {
-        RCLCPP_WARN(this->get_logger(), "Service call timed out or not ready yet");
+        RCLCPP_WARN(this->get_logger(), "Could not find a path");
         goal_pose_ = nullptr;
       }
     }
