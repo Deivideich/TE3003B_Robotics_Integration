@@ -30,7 +30,7 @@ namespace puzzlebot_controllers
 
             left_mline_ = !on_mline ? true : left_mline_;
 
-            if (left_mline_ && state_ == REACHED) return true;  // Done with bug mode
+            if (state_ == REACHED) return true;  // Done with bug mode
 
 
             const double front_angle = 0.0;
