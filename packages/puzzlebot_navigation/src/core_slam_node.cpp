@@ -36,7 +36,7 @@ public:
         odom_sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
             "/odom", 10, std::bind(&CoreSlamNode::odom_callback, this, _1));
 
-        map_pub_ = this->create_publisher<nav_msgs::msg::OccupancyGrid>("/constructed_map", 10);
+        map_pub_ = this->create_publisher<nav_msgs::msg::OccupancyGrid>("/map", 10);
         particle_pub_ = this->create_publisher<geometry_msgs::msg::PoseArray>("/particles", 10);
 
         // Create a timer to periodically broadcast the transform
@@ -104,7 +104,7 @@ private:
         float theta = tf2::getYaw(pose.orientation);
 
         if (first_scan_) {
-            slam_.initial_guess(scan_angles_, scan_ranges_, scan_size_, max_range_);
+            slam_.initial_guess(scan_angles_, scan_ranges_, scan_size_, max_range_, x, y, theta);
             slam_.updateMapParams();
             first_scan_ = false;
         }
@@ -118,6 +118,8 @@ private:
         float dx = x - last_odom_.position.x;
         float dy = y - last_odom_.position.y;
         float dtheta = theta - tf2::getYaw(last_odom_.orientation);
+        dtheta = std::atan2(std::sin(dtheta), std::cos(dtheta));  // normalize angle difference
+
 
         // std::vector<float> prev_origin = slam_.get_map_origin();
 
@@ -160,48 +162,6 @@ private:
         particle_pub_->publish(msg);
     }
 
-    // void broadcast_transform() {
-    //     try {
-    //         if (!max_particle) return;
-    
-    //         // Get the best particle's pose in map coordinates
-    //         const auto& [x, y, theta] = *max_particle;
-    
-    //         // Get odom -> base_link transform
-    //         geometry_msgs::msg::TransformStamped odom_to_base;
-    //         try {
-    //             odom_to_base = tf_buffer_->lookupTransform(
-    //                 "odom", "base_link", tf2::TimePointZero);
-    //         } catch (const tf2::TransformException& ex) {
-    //             RCLCPP_WARN(this->get_logger(), "Transform lookup failed: %s", ex.what());
-    //             return;
-    //         }
-    
-    //         auto [map_center_x, map_center_y] = slam_.get_map_center();
-    
-    //         // Compute map -> odom transform
-    //         geometry_msgs::msg::TransformStamped map_to_odom;
-    //         map_to_odom.header.stamp = this->get_clock()->now();
-    //         map_to_odom.header.frame_id = "map";
-    //         map_to_odom.child_frame_id = "odom";
-    
-    //         // Account for map origin in the transform
-    //         map_to_odom.transform.translation.x = x - map_center_x;
-    //         map_to_odom.transform.translation.y = y - map_center_y;
-    //         map_to_odom.transform.translation.z = 0.0;
-    
-    //         tf2::Quaternion q;
-    //         q.setRPY(0, 0, theta);
-    //         map_to_odom.transform.rotation = tf2::toMsg(q);
-    
-    //         // Compose with odom->base to get proper map->base relationship
-    //         tf_broadcaster_->sendTransform(map_to_odom);
-    
-    //     } catch (const std::exception& e) {
-    //         RCLCPP_WARN(this->get_logger(), "TF broadcast error: %s", e.what());
-    //     }
-    // }
-
     void broadcast_transform() {
         // Get best particle's pose (relative to map origin)
         if (!max_particle) return;
@@ -240,16 +200,13 @@ private:
         msg.info.height = shape[0];
         
         // Critical change: Set the origin to the actual map origin
-        msg.info.origin.position.x = origin[0]; //origin.first;
-        msg.info.origin.position.y = origin[1]; //origin.second;
+        msg.info.origin.position.x = origin[1]; //origin.first;
+        msg.info.origin.position.y = origin[0]; //origin.second;
         msg.info.origin.position.z = 0.0;
         msg.info.origin.orientation.w = 1.0;  // No rotation
     
         // Initialize map data (-1 = unknown)
         msg.data.assign(shape[0] * shape[1], -1);
-
-        int origin_x_idx = static_cast<int>(floor(origin[0] / resolution));
-        int origin_y_idx = static_cast<int>(floor(origin[1] / resolution));
     
         // Fill in occupied cells
         for (const auto& [grid_coords, world_coords] : *map_data) {

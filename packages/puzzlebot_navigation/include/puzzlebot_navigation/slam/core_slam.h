@@ -79,7 +79,8 @@ namespace puzzlebot_navigation
 
                 bool initial_guess(
                     std::shared_ptr<std::vector<float>> scan_angles, std::shared_ptr<std::vector<float>> scan_ranges, 
-                    int scan_size, float max_range); 
+                    int scan_size, float max_range,
+                    float robot_x, float robot_y, float robot_theta); 
                     
                 bool weight_slam_particles(
                     std::shared_ptr<std::vector<float>> scan_angles, std::shared_ptr<std::vector<float>> scan_ranges, 
