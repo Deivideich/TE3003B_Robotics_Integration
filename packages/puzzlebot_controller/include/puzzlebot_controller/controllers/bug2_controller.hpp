@@ -21,6 +21,7 @@ namespace puzzlebot_controllers
             TURNING_LEFT,
             FORWARD,
             TURNING_RIGHT,
+            REACHED,
             IDLE
         };
 
@@ -37,7 +38,7 @@ namespace puzzlebot_controllers
 
                 bool isDirectionBlocked(const geometry_msgs::msg::PoseStamped& pose, 
                     double angle_min, double angle_max, double angle_step, 
-                    double distance);
+                    double distance, bool useTheta);
 
                 void setMLine(const geometry_msgs::msg::Point& start, const geometry_msgs::msg::Point& goal);
                 void setLocalMap(const nav_msgs::msg::OccupancyGrid::SharedPtr local_map) {local_map_ = local_map;}
@@ -53,6 +54,7 @@ namespace puzzlebot_controllers
                 double desired_angle_;
                 bool circling_obstacle_ = false;
                 bool left_mline_ = false;
+                bool object_on_right = false;
 
                 RobotState state_;
 

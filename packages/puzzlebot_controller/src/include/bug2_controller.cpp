@@ -30,16 +30,16 @@ namespace puzzlebot_controllers
 
             left_mline_ = !on_mline ? true : left_mline_;
 
-            if (left_mline_ && on_mline && closer) return true;  // Done with bug mode
+            if (left_mline_ && state_ == REACHED) return true;  // Done with bug mode
 
 
             const double front_angle = 0.0;
             const double right_angle = -M_PI_2;
-            const double angle_range = M_PI / 8;
-            const double check_distance = 0.75; // meters
+            const double angle_range = M_PI / 2;
+            const double check_distance = 0.50; // meters
 
-            bool front_blocked = isDirectionBlocked(current_pose, front_angle - angle_range, front_angle + angle_range, angle_range / 2, check_distance);
-            bool right_blocked = isDirectionBlocked(current_pose, right_angle - angle_range, right_angle + angle_range, angle_range / 2, check_distance);
+            bool front_blocked = isDirectionBlocked(current_pose, front_angle - angle_range, front_angle + angle_range, angle_range / 8, check_distance, false);
+            bool right_blocked = isDirectionBlocked(current_pose, right_angle - angle_range, right_angle + angle_range, angle_range / 8, check_distance, false);
             
             tf2::Quaternion q(
                 current_pose.pose.orientation.x,
@@ -50,32 +50,33 @@ namespace puzzlebot_controllers
             
             double theta = tf2::getYaw(q);
 
-            if (std::abs(angle_diff(desired_angle_, theta)) < 0.3) state_ = IDLE;
-
+            if (std::abs(angle_diff(desired_angle_, theta)) < 0.1){
+                state_ = state_ == TURNING_RIGHT ? REACHED : IDLE;
+            }
             std::cout << "Front Blocked: " << front_blocked << ", Right Blocked: " << right_blocked << std::endl;
 
             if (state_ == IDLE) {
-                if (right_blocked && !front_blocked) {
-                    std::cout << "Forward" << std::endl;
-                    // Stay in IDLE
-                } else if (front_blocked) {
-                    std::cout << "Turn LEFT" << std::endl;
-                    state_ = TURNING_LEFT;
-                    desired_angle_ = theta + M_PI_2;
-                } else {
+                if (object_on_right && !right_blocked) {
                     std::cout << "Turn RIGHT" << std::endl;
                     state_ = TURNING_RIGHT;
                     desired_angle_ = theta - M_PI_2;
+                } else if (object_on_right && !right_blocked && !front_blocked){
+                    std::cout << "Forward" << std::endl;
+                } else {
+                    std::cout << "Turn LEFT" << std::endl;
+                    state_ = TURNING_LEFT;
+                    desired_angle_ = theta + M_PI_2;
                 }
             }
 
             switch (state_)
             {
             case TURNING_RIGHT:
-                cmd->linear.x = 0.0;
+                cmd->linear.x = 0.15;
                 cmd->angular.z = -0.3;
                 break;
             case TURNING_LEFT:
+                if (!object_on_right) object_on_right = true;
                 cmd->linear.x = 0.0;
                 cmd->angular.z = 0.3;
                 break;
@@ -92,7 +93,7 @@ namespace puzzlebot_controllers
         bool Bug2Controller::isDirectionBlocked(
             const geometry_msgs::msg::PoseStamped& pose, 
             double angle_min, double angle_max, double angle_step, 
-            double distance) 
+            double distance, bool useTheta = true) 
         {
             if (!local_map_) return false;
         
@@ -110,7 +111,7 @@ namespace puzzlebot_controllers
             double step_size = local_map_->info.resolution; // Use map resolution as step size
             // Sweep through angles relative to robot heading
             for (double angle = angle_min; angle <= angle_max; angle += angle_step) {
-                double check_angle = theta + angle;
+                double check_angle = angle;
         
                 for (double step = 0.0; step <= distance; step += step_size) {
                     double check_x = robot_x + step * std::cos(check_angle);

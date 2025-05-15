@@ -129,7 +129,7 @@ private:
 
       cmd_pub_->publish(*cmd);
     } else if (controller_->getPathIndex() + 1 < current_path_.size() && 
-        bug_controller_->isDirectionBlocked(current_path_[(controller_->getPathIndex() + 1)], -(M_PI / 8), (M_PI / 8), (M_PI / 16), 0.05)) {
+        bug_controller_->isDirectionBlocked(*current_pose_, -(M_PI / 8), (M_PI / 8), (M_PI / 16), 0.05, true)) {
       activateBug2Mode();
     } 
   }
