@@ -171,5 +171,14 @@ def generate_launch_description():
                 {"useClustering": LaunchConfiguration("use_mcl_clustering")}
             ],
         ),
+
+        Node(
+            package="puzzlebot_navigation",
+            executable="local_map.py",
+            name="local_map",
+            output="screen",
+            parameters=[
+            ],
+        ),
         
     ])

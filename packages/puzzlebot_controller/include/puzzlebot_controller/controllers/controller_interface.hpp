@@ -11,8 +11,8 @@ namespace puzzlebot_controllers
     {
         class ControllerInterface {
             public:
-            double linear_speed_;
-            int path_index_ = 0;
+                double linear_speed_;
+                int path_index_ = 0;
                 ControllerInterface(double linear_speed) { linear_speed_ = linear_speed; }
 
                 virtual ~ControllerInterface() = default;

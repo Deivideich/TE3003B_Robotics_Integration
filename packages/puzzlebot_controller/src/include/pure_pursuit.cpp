@@ -1,9 +1,5 @@
 #include "puzzlebot_controller/controllers/pure_pursuit.hpp"
 
-#include <memory>
-#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
-
-
 namespace puzzlebot_controllers 
 {
     namespace controllers 

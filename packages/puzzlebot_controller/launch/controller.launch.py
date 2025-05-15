@@ -52,6 +52,10 @@ def generate_launch_description():
             description="Derivative gain used in PID controller"
         ),
         DeclareLaunchArgument(
+            name="usingBugAlgorithm", default_value="true",
+            description="Derivative gain used in PID controller"
+        ),
+        DeclareLaunchArgument(
             name="theta_resolution", default_value=str(pi/8),
             description="Used to bin theta into the hash map"
         ),
@@ -108,7 +112,8 @@ def generate_launch_description():
                 "lookahead_distance" : LaunchConfiguration("lookahead_distance"),
                 "kP" : LaunchConfiguration("kP"),
                 "kI" : LaunchConfiguration("kI"),
-                "kD" : LaunchConfiguration("kD")
+                "kD" : LaunchConfiguration("kD"),
+                "usingBugAlgorithm" : LaunchConfiguration("usingBugAlgorithm")
             }],
             output="screen"
         )
