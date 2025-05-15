@@ -400,16 +400,16 @@ class MCLNode(Node):
         if success:
             self.particles  = resampled_particles.reshape((self.num_particles, 3)).tolist()
 
-            free_indices = np.argwhere(self.map_data == 0)  # 0 = free space
+            # free_indices = np.argwhere(self.map_data == 0)  # 0 = free space
 
-            for _ in range(int(self.num_particles * self.scale_rd_particles)):
-                particle_rd_idx = np.random.randint(0, self.num_particles)
-                new_y, new_x = free_indices[np.random.choice(len(free_indices))]
+            # for _ in range(int(self.num_particles * self.scale_rd_particles)):
+            #     particle_rd_idx = np.random.randint(0, self.num_particles)
+            #     new_y, new_x = free_indices[np.random.choice(len(free_indices))]
                 
-                new_x = new_x * self.map_resolution + self.map_origin.x
-                new_y = new_y * self.map_resolution + self.map_origin.y
-                new_theta = np.random.uniform(-np.pi, np.pi)
-                self.particles[particle_rd_idx] = (new_x, new_y, new_theta)
+            #     new_x = new_x * self.map_resolution + self.map_origin.x
+            #     new_y = new_y * self.map_resolution + self.map_origin.y
+            #     new_theta = np.random.uniform(-np.pi, np.pi)
+            #     self.particles[particle_rd_idx] = (new_x, new_y, new_theta)
 
             self.particle_weights = np.ones(self.num_particles)
             self.particle_weights /= self.num_particles
@@ -513,7 +513,7 @@ class MCLNode(Node):
         if diffDistance > self.min_distance or diffAngle > self.min_angle:
             self.motion_update(self.delta_motion)       
             self.last_odom = self.odom
-            
+
             self.sensor_update()
             
             self.predictionCounter += 1
@@ -522,6 +522,8 @@ class MCLNode(Node):
             if (neff > self.num_particles * 0.1) and (self.predictionCounter >= self.repropagateCountNeeded):
                 self.resample_particles()
                 self.predictionCounter = 0
+        
+       
         
 
         self.publish_particles()
