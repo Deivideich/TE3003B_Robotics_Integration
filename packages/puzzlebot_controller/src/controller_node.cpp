@@ -117,8 +117,8 @@ private:
     bug_mode_active_ = true;
   }
 
-  void checkBugController(){
-    if (bug_mode_active_) {          
+  void needsReplanning(){
+    if (bug_mode_active_ && usingBugAlgorithm_) {          
       geometry_msgs::msg::Twist::SharedPtr cmd = std::make_shared<geometry_msgs::msg::Twist>();
       if(bug_controller_->computeCommand(*current_pose_, current_path_, cmd)){
         RCLCPP_INFO(this->get_logger(), "Bug mode done, resuming path tracking.");
@@ -128,10 +128,25 @@ private:
       }
 
       cmd_pub_->publish(*cmd);
-    } else if (controller_->getPathIndex() + 1 < current_path_.size() && 
+    } else if (usingBugAlgorithm_ && controller_->getPathIndex() + 1 < current_path_.size() && 
         bug_controller_->isDirectionBlocked(*current_pose_, -(M_PI / 8), (M_PI / 8), (M_PI / 16), 0.05, true)) {
       activateBug2Mode();
     } 
+
+    // CHECK IF NEEDS PLANNING DEPENDING ON CONTROLLER_GETPATHINDEX POSE AND CURRENT POSE 
+    if (!current_path_.empty() && controller_->getPathIndex() < current_path_.size()) {
+      const auto& target_pose = current_path_[controller_->getPathIndex()].pose;
+      const auto& current_position = current_pose_->pose.position;
+
+      double dx = target_pose.position.x - current_position.x;
+      double dy = target_pose.position.y - current_position.y;
+      double distance_to_target = std::sqrt(dx * dx + dy * dy);
+      // RCLCPP_INFO(this->get_logger(), "Distance: %2.2f", distance_to_target)
+      if (distance_to_target > lookahead_distance_ * 2) {
+        RCLCPP_WARN(this->get_logger(), "Significant deviation detected. Replanning required.");
+        needs_planning_ = true;
+      }
+    }
   }
 
   void timerCallback(){
@@ -159,9 +174,9 @@ private:
       }
     }
 
-    if (usingBugAlgorithm_) checkBugController();
+    needsReplanning();
 
-    if (!current_path_.empty() && !bug_mode_active_) {
+    if (!current_path_.empty() && !bug_mode_active_ && ! needs_planning_) {
       geometry_msgs::msg::Twist::SharedPtr cmd = std::make_shared<geometry_msgs::msg::Twist>();
       if (controller_->computeCommand(*current_pose_, current_path_, cmd)) {
         RCLCPP_INFO(this->get_logger(), "Achieved goal!");
