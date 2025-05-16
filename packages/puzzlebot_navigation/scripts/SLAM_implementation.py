@@ -635,7 +635,7 @@ class MCLNode(Node):
 
         # If no previous map, save first time or on change
         if self.last_saved_map is None or not np.array_equal(current_map, self.last_saved_map):
-            save_dir = '/home/juancarlos/TE3003/src/packages/puzzlebot_navigation/slam_output'
+            save_dir = '/workspace/8voSemestre/'
             os.makedirs(save_dir, exist_ok=True)
 
             # Save PGM

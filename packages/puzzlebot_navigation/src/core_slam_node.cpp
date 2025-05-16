@@ -17,6 +17,7 @@
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp> // for toMsg/fromMsg
 #include <tf2/utils.h> // for getYaw()
+#include <fstream>
 
 using std::placeholders::_1;
 
@@ -105,7 +106,6 @@ private:
 
         if (first_scan_) {
             slam_.initial_guess(scan_angles_, scan_ranges_, scan_size_, max_range_, x, y, theta);
-            slam_.updateMapParams();
             first_scan_ = false;
         }
 
@@ -132,8 +132,8 @@ private:
         if (delta_trans > trans_threshold_ || delta_rot > rot_threshold_) {
             slam_.motion_update(dx, dy, dtheta);
             slam_.weight_slam_particles(scan_angles_, scan_ranges_, scan_size_, max_range_, max_particle);
-            slam_.resample_particles();
             slam_.updateMapParams();
+            slam_.resample_particles();
 
             publish_particles();
             last_odom_ = pose;
@@ -207,18 +207,40 @@ private:
     
         // Initialize map data (-1 = unknown)
         msg.data.assign(shape[0] * shape[1], -1);
-    
+        // Write grid_coords and world_coords to a JSON file
+        std::ofstream json_file("/workspace/8voSemestre/python_testing/grid_coords.json");
+        if (json_file.is_open()) {
+            json_file << "{\n";
+            for (auto it = map_data->begin(); it != map_data->end(); ++it) {
+            const auto& grid_coords = it->first;
+            const auto& world_coords = it->second;
+            json_file << "  \"" << "[" << grid_coords.first << "," << grid_coords.second << "]" << "\": "
+                  << "[" << world_coords.first << "," << world_coords.second << "]";
+            if (std::next(it) != map_data->end()) {
+                json_file << ",";
+            }
+            json_file << "\n";
+            }
+            json_file << "}\n";
+            json_file.close();
+        } else {
+            RCLCPP_ERROR(this->get_logger(), "Failed to open JSON file for writing.");
+        }
         // Fill in occupied cells
         for (const auto& [grid_coords, world_coords] : *map_data) {
             int map_y = grid_coords.first;
             int map_x = grid_coords.second;
+            map_x = shape[1] - 1 - map_x;
+            map_y = shape[0] - 1 - map_y;
             int index = map_y * shape[1] + map_x;
             
             if (index >= 0 && index < msg.data.size()) {
                 msg.data[index] = 100; // Occupied
             } else {
-                RCLCPP_WARN(this->get_logger(), "Index out of bounds: %d, Map Center (%f,%f) Grid coords (%d, %d), World Coords, (%f,%f)", index, map_center.second, map_center.first, map_y, map_x, world_coords.first, world_coords.second);
+                // RCLCPP_WARN(this->get_logger(), "Index out of bounds: %d, Map Center (%f,%f) Grid coords (%d, %d), World Coords, (%f,%f)", index, map_center.second, map_center.first, map_y, map_x, world_coords.first, world_coords.second);
             }
+
+
         }
     
         map_pub_->publish(msg);
