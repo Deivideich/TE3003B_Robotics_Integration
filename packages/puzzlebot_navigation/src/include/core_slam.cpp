@@ -71,12 +71,15 @@ namespace puzzlebot_navigation
             xmax = recorded_data[2];
             ymax = recorded_data[3];
 
-            map_origin_ = {xmin * map_resolution_, ymin * map_resolution_};
-            map_shape_ = {int((ymax - ymin) / map_resolution_) + 1, int((xmax - xmin) / map_resolution_) + 1};
+            map_origin_y_ = ymin;
+            map_origin_x_ = xmin;
+            map_height_ = int((ymax - ymin) / map_resolution_) + 1;
+            map_width_ = int((xmax - xmin) / map_resolution_) + 1;
+
 
             std::cout << "Map parameters updated: "
-                << "origin=(" << map_origin_[0] << ", " << map_origin_[1] << "), "
-                << "shape=(" << map_shape_[0] << ", " << map_shape_[1] << ")" << std::endl;
+                << "origin=(" << map_origin_y_ << ", " << map_origin_x_ << "), "
+                << "shape=(" << map_height_ << ", " << map_width_ << ")" << std::endl;
         }
 
         void CoreSLAM::motion_update(float dx, float dy, float dtheta)
@@ -162,7 +165,7 @@ namespace puzzlebot_navigation
                 }
 
                 // After resampling, update main_map_
-                std::cout << "Resampling done. Main map size: " << main_map_->size() << std::endl;  // Check size
+                // std::cout << "Resampling done. Main map size: " << main_map_->size() << std::endl;  // Check size
                 // main_map_->clear();
                 // for (const int id : selected_particle_ids) {
                 //     const auto& particle_cells = particle_map_[id];
@@ -228,22 +231,37 @@ namespace puzzlebot_navigation
                 for (int j = 0; j < scan_size; ++j){
                     float ray_angle = (*scan_angles)[j];
                     float range = (*scan_ranges)[j];
-                    std::cout << "Range: " << range << " Angle: " <<ray_angle << std::endl;
+                    // std::cout << "Range: " << range << " Angle: " <<ray_angle << std::endl;
                     if (range >= max_range || range < 0.0f) continue;
 
                     float beam_x = range * std::cos(ray_angle);
                     float beam_y = range * std::sin(ray_angle);
-
-                    int map_x = static_cast<int>(beam_x / map_resolution_);
-                    int map_y = static_cast<int>(beam_y / map_resolution_);
-                    main_map_->insert({{map_x, map_y}, {beam_x, beam_y}});
-                    std::cout << "Inserted map: " << map_x << ", " << map_y << " beam: " << beam_x << ", " << beam_y << std::endl;
 
                     recorded_data[0] = std::min(recorded_data[0], beam_x);
                     recorded_data[1] = std::min(recorded_data[1], beam_y);
                     recorded_data[2] = std::max(recorded_data[2], beam_x);
                     recorded_data[3] = std::max(recorded_data[3], beam_y);
                 }
+
+                updateMapParams();
+
+
+                for (int j = 0; j < scan_size; ++j){
+                    float ray_angle = (*scan_angles)[j];
+                    float range = (*scan_ranges)[j];
+                    // std::cout << "Range: " << range << " Angle: " <<ray_angle << std::endl;
+                    if (range >= max_range || range < 0.0f) continue;
+
+                    float beam_x = range * std::cos(ray_angle);
+                    float beam_y = range * std::sin(ray_angle);
+
+                    auto [map_y, map_x] = worldToMap(beam_y, beam_x);
+
+                    if (map_y >= map_height_ || map_y < 0 || map_x >= map_width_ || map_x < 0) continue;
+
+                    main_map_->insert({{map_y, map_x},{beam_y, beam_x}});
+                }
+
                 std::cout << "Initial guess done. Main map size: " << main_map_->size() << std::endl;  // Check size
 
                 return true;
@@ -269,18 +287,12 @@ namespace puzzlebot_navigation
                     return false;
                 }
 
-                float origin_x = map_origin_[0];
-                float origin_y = map_origin_[1];
-
-                int map_height = map_shape_[0];
-                int map_width = map_shape_[1];
                 float max_score = 0.0;
-
 
                 for (size_t i = 0; i < num_particles_; i++){
                     const auto& particle = (*particles_)[i];
                     auto [x, y, theta] = particle;
-                    std::cout << "Particle: " << i << " X: " << x << " Y: " << y << " Theta: " << theta << std::endl;
+                    // std::cout << "Particle: " << i << " X: " << x << " Y: " << y << " Theta: " << theta << std::endl;
                     float particle_weight = 0.0;
                     particle_map_[i] = std::make_shared<uset_pair>();
                     // For each particle calculate the weight based on the laser scan hits and map occupancy grid
@@ -300,71 +312,84 @@ namespace puzzlebot_navigation
                         float beam_y = y + range * std::sin(ray_angle);
 
                         // Check if the beam is within the map bounds
-                        int map_x = static_cast<int>((beam_x - origin_x) / map_resolution_);
-                        int map_y = static_cast<int>((beam_y - origin_y) / map_resolution_);                        
+                        auto [map_y, map_x] = worldToMap(beam_y, beam_x);
                         // Check value of the map cell 
                         particle_weight += main_map_->find({map_y, map_x}) != main_map_->end() ? 1.0 : 0.0;
-                        particle_map_[i]->insert({{map_x, map_y}, {beam_x, beam_y}});
+                        particle_map_[i]->insert({{map_y, map_x}, {beam_y, beam_x}});
                     }
                     
                     // std::cout << "Particle: " << i << " Weight: " << particle_weight << std::endl;
                     (*weights_)[i] = particle_weight;
                 }
 
-                // Normalize weights_
-                float sum = 0.0;
-                for (size_t i = 0; i < num_particles_; i++){
-                    sum += (*weights_)[i];
+                // Normalize weights
+                float sum = std::accumulate(weights_->begin(), weights_->end(), 0.0f);
+                if (sum > 0.0f) {
+                    for (auto& w : *weights_) w /= sum;
+                } else {
+                    std::fill(weights_->begin(), weights_->end(), 1.0f / num_particles_);
                 }
 
-                int max_index = 0;
-                if (sum > 0.0){
-                    for (size_t i = 0; i < num_particles_; i++){
-                        (*weights_)[i] /= sum;
+                // Get top N%
+                const int top_n = std::max(5, num_particles_ / 10);
+                std::vector<size_t> indices(num_particles_);
+                std::iota(indices.begin(), indices.end(), 0);
+                std::partial_sort(
+                    indices.begin(),
+                    indices.begin() + top_n,
+                    indices.end(),
+                    [this](size_t a, size_t b) { return (*weights_)[a] > (*weights_)[b]; }
+                );
 
-                        // Find the maximum weight and corresponding particle
-                        if ((*weights_)[i] > max_score){
-                            max_score = (*weights_)[i];
-                            max_index = i;
-                            const auto& particle = (*particles_)[i];
-                            auto [x, y, theta] = particle;
-                            max_particle = std::make_shared<Particle>(x, y, theta);
+                // Update main_map_ using the top N% particles
+                for (int i = 0; i < top_n; ++i) {
+                    auto idx = indices[i];
+                    const auto& particle_cells = particle_map_[idx];
+                    if (!particle_cells) continue;
+
+                    for (const auto& [cell, coords] : *particle_cells) {
+                        recorded_data[0] = std::min(recorded_data[0], coords.second);
+                        recorded_data[1] = std::min(recorded_data[1], coords.first);
+                        recorded_data[2] = std::max(recorded_data[2], coords.second);
+                        recorded_data[3] = std::max(recorded_data[3], coords.first);
+                    }
+                }
+
+                // STEP 4: Update map parameters
+                updateMapParams();
+
+                // STEP 5: Backup and realign old main_map_ entries
+                uset_pair new_main_map;
+                for (const auto& [cell, coords] : *main_map_) {
+                    auto [new_y, new_x] = worldToMap(coords.first, coords.second);
+                    new_main_map[{new_y, new_x}] = coords;
+                }
+                main_map_->clear();
+                *main_map_ = std::move(new_main_map);
+
+                // STEP 6: Second pass — insert new cells
+                for (int i = 0; i < top_n; ++i) {
+                    const auto& cells = particle_map_[i];
+                    if (!cells) continue;
+                    for (const auto& [cell, coords] : *cells) {
+                        auto [map_y, map_x] = worldToMap(coords.first, coords.second);
+                        if (main_map_->find({map_y, map_x}) == main_map_->end()) {
+                            (*main_map_)[{map_y, map_x}] = coords;
                         }
                     }
-
-                    main_map_->clear();
-                    const auto& particle_cells = particle_map_[max_index];
-                    if (!particle_cells) return false;
-
-                    for (const auto& coord : *particle_cells) {
-                        main_map_->insert(coord);
-                        recorded_data[0] = std::min(recorded_data[0], coord.second.second);
-                        recorded_data[1] = std::min(recorded_data[1], coord.second.first);
-                        recorded_data[2] = std::max(recorded_data[2], coord.second.second);
-                        recorded_data[3] = std::max(recorded_data[3], coord.second.first);
-                    }
-                    std::cout << "{" << recorded_data[0] << ", " << recorded_data[1] << ", " 
-                        << recorded_data[2] << ", " << recorded_data[3] << "}" << std::endl;
-
-                    // Clear the particle_map_ to avoid memory leaks
-                    for (const auto& pair : particle_map_) {
-                        pair.second->clear();
-                    }
-                    particle_map_.clear();
-
-                    
-                } else {
-                    std::cout << "Warning: All weights are zero!" << std::endl;
-                    for (size_t i = 0; i < num_particles_; i++){
-                        (*weights_)[i] = 1.0 / num_particles_;
-                    }
                 }
-
                 return true;
             } catch (const std::exception& e) {
                 std::cerr << "Exception in resample_particles: " << e.what() << std::endl;
                 return false;
             }
+        }
+
+        std::pair<int,int> CoreSLAM::worldToMap(float world_y, float world_x){
+            return {
+                static_cast<int>((world_y - map_origin_y_) / map_resolution_),
+                static_cast<int>((world_x - map_origin_x_) / map_resolution_)
+            };
         }
     } // namespace SLAM
 } // namespace puzzlebot_navigation

@@ -36,7 +36,7 @@ public:
         odom_sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
             "/odom", 10, std::bind(&CoreSlamNode::odom_callback, this, _1));
 
-        map_pub_ = this->create_publisher<nav_msgs::msg::OccupancyGrid>("/constructed_map", 10);
+        map_pub_ = this->create_publisher<nav_msgs::msg::OccupancyGrid>("/tm_map", 10);
         particle_pub_ = this->create_publisher<geometry_msgs::msg::PoseArray>("/particles", 10);
 
         // Create a timer to periodically broadcast the transform
@@ -105,7 +105,7 @@ private:
 
         if (first_scan_) {
             slam_.initial_guess(scan_angles_, scan_ranges_, scan_size_, max_range_);
-            slam_.updateMapParams();
+            // slam_.updateMapParams();
             first_scan_ = false;
         }
 
@@ -126,12 +126,13 @@ private:
             slam_.motion_update(dx, dy, dtheta);
             slam_.weight_slam_particles(scan_angles_, scan_ranges_, scan_size_, max_range_, max_particle);
             slam_.resample_particles();
-            slam_.updateMapParams();
+            // slam_.updateMapParams();
 
             publish_particles();
             last_odom_ = pose;
-            publish_map();
         }
+        
+        publish_map();
         
     }
 
@@ -231,20 +232,25 @@ private:
         msg.header.frame_id = "map";
 
         auto map_data = slam_.get_main_map();
-        auto origin = slam_.get_map_origin();
-        auto shape = slam_.get_map_shape();
         float resolution = slam_.get_map_resolution();
 
+        float origin_x = slam_.get_origin_x();
+        float origin_y = slam_.get_origin_y();
+
+        int width = slam_.get_width();
+        int height = slam_.get_height();
+
         msg.info.resolution = resolution;
-        msg.info.width = shape[1];
-        msg.info.height = shape[0];
-        msg.info.origin.position.x = origin[0];
-        msg.info.origin.position.y = origin[1];
+        msg.info.width = width;
+        msg.info.height = height;
+        msg.info.origin.position.x = origin_x;
+        msg.info.origin.position.y = origin_y;
 
-        msg.data.assign(shape[0] * shape[1], -1); // unknown cells
+        msg.data.assign(width * height, -1); // unknown cells
 
-        for (const auto& [grid_map, _] : *map_data) {
-            int index = grid_map.first * shape[1] + grid_map.second;
+        for (const auto& [grid_map, world_map] : *map_data) {
+            auto[map_y, map_x] = slam_.worldToMap(world_map.first, world_map.second);
+            int index = map_y * width + map_x;
             if (index >= 0 && index < msg.data.size()) {
                 msg.data[index] = 100; // occupied
             }

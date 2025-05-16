@@ -45,8 +45,8 @@ namespace puzzlebot_navigation
                 // MAPs
                 std::shared_ptr<uset_pair> main_map_;
                 std::unordered_map<int, std::shared_ptr<uset_pair>> particle_map_;
-                std::vector<float> map_origin_;
-                std::vector<int> map_shape_;
+                float map_origin_x_, map_origin_y_;
+                int map_width_, map_height_;
                 std::vector<float> recorded_data = {
                     std::numeric_limits<float>::max(), 
                     std::numeric_limits<float>::max(), 
@@ -76,6 +76,8 @@ namespace puzzlebot_navigation
                 bool weight_slam_particles(
                     std::shared_ptr<std::vector<float>> scan_angles, std::shared_ptr<std::vector<float>> scan_ranges, 
                     int scan_size, float max_range, std::shared_ptr<Particle> max_particle);
+
+                std::pair<int,int> worldToMap(float world_y, float world_x);
                 
                 bool resample_particles();
 
@@ -88,15 +90,31 @@ namespace puzzlebot_navigation
                 }
         
                 std::vector<float> get_map_origin() const {
-                    return map_origin_;
+                    return {map_origin_y_, map_origin_x_};
                 }
         
                 std::vector<int> get_map_shape() const {
-                    return map_shape_;
+                    return {map_height_, map_width_};
                 }
         
                 float get_map_resolution() const {
                     return map_resolution_;
+                }
+
+                float get_origin_x() const {
+                    return map_origin_x_;
+                }
+                
+                float get_origin_y() const {
+                    return map_origin_y_;
+                }
+
+                int get_width() const {
+                    return map_width_;
+                }
+
+                int get_height() const {
+                    return map_height_;
                 }
         };
     }        
