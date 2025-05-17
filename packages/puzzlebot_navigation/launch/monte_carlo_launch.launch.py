@@ -39,7 +39,7 @@ def generate_launch_description():
             description="Prefix for robot link/joint names"
         ),
         DeclareLaunchArgument(
-            name="use_gazebo_controllers", default_value="false",
+            name="use_gazebo_controllers", default_value="true",
             description="Whether to include Gazebo controllers"
         ),
         DeclareLaunchArgument(
@@ -126,17 +126,9 @@ def generate_launch_description():
             arguments=["-d", default_rviz_config_path]
         ),
         
-                # Custom puzzlebot nodes
         Node(
             package="puzzlebot_kinematics",
-            executable="differential_inverse_kinematics.py",
-            name="differential_inverse_kinematics",
-            output="screen",
-        ),
-
-        Node(
-            package="puzzlebot_kinematics",
-            executable="differential_direct_kinematics.py",
+            executable="differential_direct_kinematics_gazebo.py",
             name="differential_direct_kinematics",
             output="screen",
         ),
