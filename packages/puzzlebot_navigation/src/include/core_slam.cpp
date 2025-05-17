@@ -354,7 +354,7 @@ namespace puzzlebot_navigation
                         recorded_data[3] = std::max(recorded_data[3], coords.first);
                     }
                 }
-
+                // MapParams old_map_params = map_params_;  // Deep copy
                 // STEP 4: Update map parameters
                 updateMapParams();
 
