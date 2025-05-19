@@ -13,6 +13,7 @@ find_package(rclcpp REQUIRED)
 # Keep other find_package calls if needed later, but comment out for now
 find_package(nav_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
+find_package(visualization_msgs REQUIRED)
 find_package(puzzlebot_interfaces REQUIRED)
 # find_package(visualization_msgs REQUIRED)
 find_package(tf2 REQUIRED)
@@ -127,10 +128,10 @@ target_link_libraries(test_astar_planner_node PUBLIC puzzlebot_planning_include)
 add_dependencies(test_astar_planner_node puzzlebot_planning_include)
 
 # state validator test
-# add_executable(test_map_validator_node src/nodes/tests/test_map_validator_node.cpp)
-# ament_target_dependencies(test_map_validator_node PUBLIC rclcpp ompl)
-# target_link_libraries(test_map_validator_node PUBLIC puzzlebot_planning_include)
-# add_dependencies(test_map_validator_node puzzlebot_planning_include)
+add_executable(test_map_validator_node src/nodes/tests/test_map_validator_node.cpp)
+ament_target_dependencies(test_map_validator_node PUBLIC rclcpp visualization_msgs)
+target_link_libraries(test_map_validator_node PUBLIC puzzlebot_planning_include)
+add_dependencies(test_map_validator_node puzzlebot_planning_include)
 
 # Install headers
 install(
@@ -158,6 +159,11 @@ install(
 
 install(
     TARGETS test_astar_planner_node
+    DESTINATION lib/${PROJECT_NAME}
+)
+
+install(
+    TARGETS test_map_validator_node
     DESTINATION lib/${PROJECT_NAME}
 )
 
