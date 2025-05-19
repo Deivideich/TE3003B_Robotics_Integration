@@ -355,14 +355,22 @@ namespace puzzlebot_navigation
                     }
                 }
                 // MapParams old_map_params = map_params_;  // Deep copy
+                float old_origin_x = map_origin_x_;
+                float old_origin_y = map_origin_y_;
                 // STEP 4: Update map parameters
                 updateMapParams();
+
+                // Step 4.5: Compute offset (new origin relative to old origin)
+                float dx = old_origin_x - map_origin_x_;
+                float dy = old_origin_y - map_origin_y_;
 
                 // STEP 5: Backup and realign old main_map_ entries
                 uset_pair new_main_map;
                 for (const auto& [cell, coords] : *main_map_) {
-                    auto [new_y, new_x] = worldToMap(coords.first, coords.second);
-                    new_main_map[{new_y, new_x}] = coords;
+                    float new_world_x = coords.second; //+ dx;
+                    float new_world_y = coords.first; //+ dy;
+                    auto [new_y, new_x] = worldToMap(new_world_y, new_world_x);
+                    new_main_map.insert({{new_y, new_x}, {new_world_y, new_world_x}});
                 }
                 main_map_->clear();
                 *main_map_ = std::move(new_main_map);
@@ -372,6 +380,7 @@ namespace puzzlebot_navigation
                     const auto& cells = particle_map_[i];
                     if (!cells) continue;
                     for (const auto& [cell, coords] : *cells) {
+                         // Apply translation (rotation optional)
                         auto [map_y, map_x] = worldToMap(coords.first, coords.second);
                         if (main_map_->find({map_y, map_x}) == main_map_->end()) {
                             (*main_map_)[{map_y, map_x}] = coords;
