@@ -37,7 +37,7 @@ int main(int argc, char * argv[])
     astar_planner.setGoal(goal_state);
 
     // Find the path
-    bool result = astar_planner.findPath();
+    bool result = astar_planner.plan();
 
     if (result){
         // Print the resulting trajectory

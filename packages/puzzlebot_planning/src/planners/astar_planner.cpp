@@ -139,7 +139,7 @@ namespace puzzlebot_planning::planners
     }
     
 
-    bool AStarPlanner::findPath()
+    bool AStarPlanner::plan()
     {
         if (grid_.empty() || grid_[0].empty()) {
             std::cerr << "Grid is empty!" << std::endl;

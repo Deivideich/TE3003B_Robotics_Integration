@@ -26,6 +26,7 @@ add_library(puzzlebot_planning_include SHARED
     src/model/se2_state.cpp
     src/model/trajectory.cpp
     src/planners/astar_planner.cpp
+    src/planners/ompl_planner.cpp
     src/state_validity/map_validator.cpp
     src/state_validity/circle_map_validator.cpp
 )
@@ -97,6 +98,27 @@ add_dependencies(astar_planner_client puzzlebot_planning_include)
 # Install the main A* client node executable
 install(
     TARGETS astar_planner_client
+    DESTINATION lib/${PROJECT_NAME}
+)
+
+# Add the main OMPL service node executable
+add_executable(ompl_planner_server src/nodes/ompl_planner_server.cpp)
+ament_target_dependencies(ompl_planner_server PUBLIC
+    rclcpp
+    nav_msgs
+    geometry_msgs
+    tf2
+    puzzlebot_interfaces
+)
+# Link the node against the model library
+target_link_libraries(ompl_planner_server PUBLIC
+    puzzlebot_planning_include
+)
+# Specify dependencies for building order
+add_dependencies(ompl_planner_server puzzlebot_planning_include)
+# Install the main A* node executable
+install(
+    TARGETS ompl_planner_server
     DESTINATION lib/${PROJECT_NAME}
 )
 
