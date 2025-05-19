@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.8)
-project(puzzlebot_description)
+project(puzzlebot_navigation)
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
@@ -14,25 +14,32 @@ find_package(urdf_launch REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
+find_package(puzzlebot_interfaces REQUIRED)
 
-
-#Install directories
-install(DIRECTORY urdf  meshes  models   
+# Install directories
+install(DIRECTORY scripts rviz maps launch
   DESTINATION share/${PROJECT_NAME})
+
+  # Install shared C++ library
+install(
+  DIRECTORY utils/cpp/
+  DESTINATION lib/${PROJECT_NAME}
+  FILES_MATCHING PATTERN "*.so"
+)
+
 
 # Include every Python script within the src and scripts directory
 # file(GLOB PYTHON_CLASSES src/*.py)
 file(GLOB_RECURSE PYTHON_SCRIPTS scripts/*.py)
-install(PROGRAMS 
-  # ${PYTHON_CLASSES} 
+install(PROGRAMS
   ${PYTHON_SCRIPTS}
   DESTINATION lib/${PROJECT_NAME}
 )
 
-#Python compatability
+# Python compatability
 ament_python_install_package(${PROJECT_NAME})
 
-##For testing
+# #For testing
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   set(ament_cmake_copyright_FOUND TRUE)

@@ -1,3 +1,7 @@
 log/
 build/
 install/
+.vscode/
+*.o
+*.so
+*.exe
