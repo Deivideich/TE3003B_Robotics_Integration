@@ -3,36 +3,50 @@
 #include <rclcpp/rclcpp.hpp>
 #include <nav_msgs/msg/occupancy_grid.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
+#include <geometry_msgs/msg/point_stamped.hpp>
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2/LinearMath/Matrix3x3.h>
 #include <memory>
 #include "nav_msgs/msg/path.hpp"
 #include "nav_msgs/msg/occupancy_grid.hpp"
 
+float ROBOT_RADIUS = 0.3; // Robot radius in meters
+
 class OMPLPlannerServer : public rclcpp::Node {
 public:
     OMPLPlannerServer() : Node("ompl_planner_server") {
         RCLCPP_INFO(this->get_logger(), "Initializing OMPL Planner Server...");
-        planner_ = std::make_shared<puzzlebot_planning::planners::OMPLPlanner>(0.3, 50);
+        planner_ = std::make_shared<puzzlebot_planning::planners::OMPLPlanner>(ROBOT_RADIUS, 20);
         RCLCPP_INFO(this->get_logger(), "OMPL Planner initialized with robot radius: %.2f m, Occupancy threshold: %d",
-                    0.3, 50);
+                    ROBOT_RADIUS, 20);
         map_sub_ = this->create_subscription<nav_msgs::msg::OccupancyGrid>(
             "map",
             10,
             std::bind(&OMPLPlannerServer::mapCallback, this, std::placeholders::_1));
 
+        // debugger to check if the map is received
+        
+
         service_ = this->create_service<puzzlebot_interfaces::srv::PlanPath>(
             "plan_path",
             std::bind(&OMPLPlannerServer::handlePlanRequest, this, std::placeholders::_1, std::placeholders::_2));
         path_publisher_ = this->create_publisher<nav_msgs::msg::Path>("planned_path", 10);
+        clicked_point_sub_ = this->create_subscription<geometry_msgs::msg::PointStamped>(
+            "/clicked_point", 10, std::bind(&OMPLPlannerServer::clickedPointCallback, this, std::placeholders::_1));
+        RCLCPP_INFO(this->get_logger(), "Subscribed to /clicked_point topic.");
         RCLCPP_INFO(this->get_logger(), "OMPL Planner Server is ready.");
     }
 
 private:
     void mapCallback(const nav_msgs::msg::OccupancyGrid::ConstSharedPtr msg) {
+        if (planning) {
+            return;
+        }
         planner_->updateMap(msg);
         RCLCPP_INFO(this->get_logger(), "Map updated.");
     }
+
+
 
     void handlePlanRequest(const std::shared_ptr<puzzlebot_interfaces::srv::PlanPath::Request> request,
                            std::shared_ptr<puzzlebot_interfaces::srv::PlanPath::Response> response) {
@@ -58,12 +72,13 @@ private:
             request->goal.pose.position.y,
             yaw);
         
-        planner_->setPlanner("RRTConnect");
+        planner_->setPlanner("RRTSharp");
         planner_->setStart(start);
         planner_->setGoal(goal);
-
+        
+        planning = true;
         if (planner_->plan()) {
-            
+            planning = false;
             // Get the trajectory
             auto trajectory = planner_->getTrajectory();
             response->result = true;
@@ -93,10 +108,45 @@ private:
         }
     }
 
+    void clickedPointCallback(const geometry_msgs::msg::PointStamped::ConstSharedPtr msg) {
+        RCLCPP_INFO(this->get_logger(), "Received clicked point: (%.2f, %.2f) in frame '%s'",
+                    msg->point.x, msg->point.y, msg->header.frame_id.c_str());
+
+        if (!planner_) {
+            RCLCPP_ERROR(this->get_logger(), "Planner is not initialized. Cannot validate point.");
+            return;
+        }
+
+        // Create an OMPL state representing the clicked point
+        auto space_info = planner_->getSpaceInformation();
+        if (!space_info) {
+            RCLCPP_ERROR(this->get_logger(), "SpaceInformation is not available. Cannot validate point.");
+            return;
+        }
+
+        ompl::base::ScopedState<ompl::base::SE2StateSpace> ompl_state(space_info->getStateSpace());
+        ompl_state->setX(msg->point.x);
+        ompl_state->setY(msg->point.y);
+        ompl_state->setYaw(0.0); // Default orientation
+
+        // Check validity
+        bool is_valid = space_info->isValid(ompl_state.get());
+
+        // Log the result
+        if (is_valid) {
+            RCLCPP_INFO(this->get_logger(), "Clicked point (%.2f, %.2f) is VALID.",
+                        ompl_state->getX(), ompl_state->getY());
+        } else {
+            RCLCPP_WARN(this->get_logger(), "Clicked point (%.2f, %.2f) is INVALID (Collision or out of bounds).",
+                        ompl_state->getX(), ompl_state->getY());
+        }
+    }
+    bool planning = false;
     std::shared_ptr<puzzlebot_planning::planners::OMPLPlanner> planner_;
     rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr map_sub_;
     rclcpp::Service<puzzlebot_interfaces::srv::PlanPath>::SharedPtr service_;
     rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr path_publisher_;
+    rclcpp::Subscription<geometry_msgs::msg::PointStamped>::SharedPtr clicked_point_sub_;
 };
 
 int main(int argc, char* argv[]) {

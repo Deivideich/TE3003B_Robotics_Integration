@@ -54,6 +54,8 @@ bool CircleMapValidator::isCollisionFree(double x, double y) const {
     //      return false;
     // }
 
+    // std::cout << "CircleMapValidator::isCollisionFree called with x: " << x << ", y: " << y << std::endl;
+
     const auto& map_info = current_map_->info;
     const double resolution = map_info.resolution; // Already checked > 0 in updateMap
     const double origin_x = map_info.origin.position.x;

@@ -10,6 +10,7 @@
 #include <nav_msgs/msg/occupancy_grid.hpp>
 #include <memory>
 #include <ompl/base/spaces/ReedsSheppStateSpace.h>
+#include <ompl/base/spaces/DubinsStateSpace.h>
 
 namespace puzzlebot_planning::planners {
 
@@ -30,9 +31,13 @@ public:
 
     void setPlanner(const std::string& planner_name);
 
+    ompl::base::SpaceInformationPtr getSpaceInformation() const {
+        return simple_setup_->getSpaceInformation();
+    }
+
 private:
     std::shared_ptr<ompl::geometric::SimpleSetup> simple_setup_;
-    std::shared_ptr<ompl::base::ReedsSheppStateSpace> state_space_;
+    std::shared_ptr<ompl::base::DubinsStateSpace> state_space_;
     std::shared_ptr<ompl::base::SpaceInformation> space_info_;
     std::shared_ptr<ompl::base::Planner> planner_;
 

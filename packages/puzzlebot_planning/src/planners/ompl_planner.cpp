@@ -4,15 +4,15 @@
 #include <ompl/geometric/planners/rrt/RRT.h>
 #include <ompl/geometric/planners/rrt/RRTConnect.h>
 #include <ompl/geometric/planners/prm/PRM.h>
+#include <ompl/geometric/planners/rrt/RRTsharp.h>
 #include <rclcpp/rclcpp.hpp>
-
 
 namespace puzzlebot_planning::planners {
 
 OMPLPlanner::OMPLPlanner(double robot_radius, int occupancy_threshold) {
     RCLCPP_INFO(rclcpp::get_logger("OMPLPlanner"), "Initializing OMPLPlanner...");
 
-    auto space = std::make_shared<ompl::base::ReedsSheppStateSpace>();
+    auto space = std::make_shared<ompl::base::DubinsStateSpace>(0.1);
     if (!space) {
         RCLCPP_ERROR(rclcpp::get_logger("OMPLPlanner"), "Failed to create SE2StateSpace.");
         throw std::runtime_error("Failed to create SE2StateSpace");
@@ -20,8 +20,8 @@ OMPLPlanner::OMPLPlanner(double robot_radius, int occupancy_threshold) {
     RCLCPP_INFO(rclcpp::get_logger("OMPLPlanner"), "SE2StateSpace created successfully.");
 
     ompl::base::RealVectorBounds bounds(2);
-    bounds.setLow(-50); // Example bounds
-    bounds.setHigh(50);
+    bounds.setLow(-10); // Example bounds
+    bounds.setHigh(10);
     space->setBounds(bounds);
     RCLCPP_INFO(rclcpp::get_logger("OMPLPlanner"), "Bounds set to: [%.2f, %.2f]", bounds.low[0], bounds.high[0]);
 
@@ -83,6 +83,8 @@ void OMPLPlanner::setPlanner(const std::string& planner_name) {
         planner = std::make_shared<ompl::geometric::RRT>(simple_setup_->getSpaceInformation());
     } else if (planner_name == "RRTConnect") {
         planner = std::make_shared<ompl::geometric::RRTConnect>(simple_setup_->getSpaceInformation());
+    } else if (planner_name == "RRTSharp") {
+        planner = std::make_shared<ompl::geometric::RRTsharp>(simple_setup_->getSpaceInformation());
     } else if (planner_name == "PRM") {
         planner = std::make_shared<ompl::geometric::PRM>(simple_setup_->getSpaceInformation());
     } else {
@@ -100,25 +102,33 @@ bool OMPLPlanner::plan() {
         return false;
     }
 
-    auto space = simple_setup_->getStateSpace()->as<ompl::base::ReedsSheppStateSpace>();
-    ompl::base::ScopedState<ompl::base::ReedsSheppStateSpace> ompl_start(simple_setup_->getSpaceInformation());
+    simple_setup_->clear();
+    simple_setup_->setStateValidityChecker(validator_);
+    simple_setup_->getSpaceInformation()->setStateValidityCheckingResolution(0.01);
+    simple_setup_->getSpaceInformation()->setup();
+
+
+    auto space = simple_setup_->getStateSpace()->as<ompl::base::DubinsStateSpace>();
+    ompl::base::ScopedState<ompl::base::DubinsStateSpace> ompl_start(simple_setup_->getSpaceInformation());
     ompl_start->setX(start_->getX());
     ompl_start->setY(start_->getY());
     ompl_start->setYaw(start_->getTheta());
 
-    ompl::base::ScopedState<ompl::base::ReedsSheppStateSpace> ompl_goal(simple_setup_->getSpaceInformation());
+    ompl::base::ScopedState<ompl::base::DubinsStateSpace> ompl_goal(simple_setup_->getSpaceInformation());
     ompl_goal->setX(goal_->getX());
     ompl_goal->setY(goal_->getY());
     ompl_goal->setYaw(goal_->getTheta());
 
     simple_setup_->setStartAndGoalStates(ompl_start, ompl_goal);
 
-    if (simple_setup_->solve(1.0)) {
+    if (simple_setup_->solve(0.25)) {
+        // simple_setup_->simplifySolution(10);
         auto path = simple_setup_->getSolutionPath();
-        path.interpolate(100); // Interpolate to have 100 states in the trajectory
+        path.interpolate(30); // Interpolate the path to get more points
+        // to trajectory
         trajectory_->clear();
         for (size_t i = 0; i < path.getStateCount(); ++i) {
-            auto state = path.getState(i)->as<ompl::base::ReedsSheppStateSpace::StateType>();
+            auto state = path.getState(i)->as<ompl::base::DubinsStateSpace::StateType>();
             auto se2_state = std::make_shared<SE2State>(state->getX(), state->getY(), state->getYaw());
             trajectory_->addState(se2_state);
         }
