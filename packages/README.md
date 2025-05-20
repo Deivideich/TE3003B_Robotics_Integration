@@ -65,5 +65,5 @@ puzzlebot_description/
 ### OMPL
 - Install the OMPL library for advanced motion planning capabilities.
 ```bash
-sudo apt install ros-humble-ompl apt-get install libompl-dev ompl-demos
+sudo apt install ros-humble-ompl libompl-dev ompl-demos
 ```
