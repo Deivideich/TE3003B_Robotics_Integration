@@ -124,6 +124,17 @@ bool OMPLPlanner::plan() {
     if (simple_setup_->solve(0.25)) {
         // simple_setup_->simplifySolution(10);
         auto path = simple_setup_->getSolutionPath();
+        // if last state on path is not close to goal (5cm), reject
+        auto last_state = path.getState(path.getStateCount() - 1)->as<ompl::base::DubinsStateSpace::StateType>();
+        double last_x = last_state->getX();
+        double last_y = last_state->getY();
+        double goal_x = goal_->getX();
+        double goal_y = goal_->getY();
+        double distance = std::sqrt(std::pow(last_x - goal_x, 2) + std::pow(last_y - goal_y, 2));
+        if (distance > 0.05) {
+            RCLCPP_ERROR(rclcpp::get_logger("OMPLPlanner"), "Last state is not close to goal (distance: %.2f)", distance);
+            return false;
+        }
         path.interpolate(30); // Interpolate the path to get more points
         // to trajectory
         trajectory_->clear();
