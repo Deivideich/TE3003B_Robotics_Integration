@@ -11,8 +11,8 @@ class CameraPublisher(Node):
         super().__init__('camera_publisher')
         
         # Create publishers for both raw and compressed images
-        self.image_pub = self.create_publisher(Image, '/camera/image', 10)
-        self.compressed_pub = self.create_publisher(CompressedImage, '/camera/image/compressed', 10)
+        self.image_pub = self.create_publisher(Image, '/video_source/raw', 10)
+        self.compressed_pub = self.create_publisher(CompressedImage, '/video_source/compressed', 10)
         
         # Set up camera capture
         self.cap = cv2.VideoCapture(0)  # Use 0 for default webcam
