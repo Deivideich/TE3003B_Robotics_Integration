@@ -52,7 +52,7 @@ bool resample_particles(
         
         std::uniform_int_distribution<int> particle_index_distribution(0, num_particles - 1);
         std::normal_distribution<float> trans_noise_distribution(0, trans_noise);
-        std::normal_distribution<float> theta_noise_distribution(-theta_noise, theta_noise);
+        std::normal_distribution<float> theta_noise_distribution(0, theta_noise);
 
         // Add gaussian noise and write to resampled_particles using uniform distribution to select the particle
         for (int i = 0; i < num_particles; i++) {
