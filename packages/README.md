@@ -59,3 +59,11 @@ puzzlebot_description/
     ├── mapping_params.yaml
     └── nav_params.yaml
 ```
+
+## Requirements
+
+### OMPL
+- Install the OMPL library for advanced motion planning capabilities.
+```bash
+sudo apt install ros-humble-ompl apt-get install libompl-dev ompl-demos
+```
