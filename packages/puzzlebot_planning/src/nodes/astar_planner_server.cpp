@@ -147,7 +147,7 @@ class AStarPlannerServer : public rclcpp::Node
             }
 
             // Find the path
-            bool result = astar_planner_->findPath();
+            bool result = astar_planner_->plan();
 
             if (result) {
                 // Get the trajectory
