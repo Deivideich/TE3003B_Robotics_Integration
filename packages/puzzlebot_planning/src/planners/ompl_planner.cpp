@@ -9,15 +9,15 @@
 
 namespace puzzlebot_planning::planners {
 
-OMPLPlanner::OMPLPlanner(double robot_radius, int occupancy_threshold) {
+OMPLPlanner::OMPLPlanner(double robot_radius, int occupancy_threshold, float turning_radius) {
     RCLCPP_INFO(rclcpp::get_logger("OMPLPlanner"), "Initializing OMPLPlanner...");
 
-    auto space = std::make_shared<ompl::base::DubinsStateSpace>(0.1);
+    auto space = std::make_shared<ompl::base::DubinsStateSpace>(turning_radius);
     if (!space) {
         RCLCPP_ERROR(rclcpp::get_logger("OMPLPlanner"), "Failed to create SE2StateSpace.");
         throw std::runtime_error("Failed to create SE2StateSpace");
     }
-    RCLCPP_INFO(rclcpp::get_logger("OMPLPlanner"), "SE2StateSpace created successfully.");
+    RCLCPP_INFO(rclcpp::get_logger("OMPLPlanner"), "Dubins state space created successfully with turning radius: %.2f", turning_radius);
 
     ompl::base::RealVectorBounds bounds(2);
     bounds.setLow(-10); // Example bounds

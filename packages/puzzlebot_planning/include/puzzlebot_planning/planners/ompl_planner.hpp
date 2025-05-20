@@ -16,7 +16,7 @@ namespace puzzlebot_planning::planners {
 
 class OMPLPlanner : public Planner {
 public:
-    OMPLPlanner(double robot_radius, int occupancy_threshold);
+    OMPLPlanner(double robot_radius, int occupancy_threshold, float turning_radius = 0.1);
 
     bool plan() override;
 
