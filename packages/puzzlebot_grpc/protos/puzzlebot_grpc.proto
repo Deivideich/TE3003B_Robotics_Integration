@@ -1,0 +1,21 @@
+//author AECL
+
+syntax = "proto3";
+import "google/protobuf/empty.proto";
+package RPCPuzzlebotPKG;
+
+service PuzzlebotRPC {
+    rpc GetTrailersData (google.protobuf.Empty) returns (TrailersArray){
+    };
+    rpc GetImage (google.protobuf.Empty) returns (CompressedImage){        
+    };
+}
+
+message TrailersArray {
+    repeated int32 ids = 1 [packed=true]; 
+    repeated int32 boxes = 2 [packed=true]; 
+}
+
+message CompressedImage {
+    bytes img = 1;
+}
