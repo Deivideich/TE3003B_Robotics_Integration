@@ -71,70 +71,6 @@ def generate_launch_description():
             description="Whether to use clustering in MCL algorithm"
         ),
 
-        # Launch Gazebo
-        IncludeLaunchDescription(
-            PythonLaunchDescriptionSource([
-                PathJoinSubstitution([
-                    FindPackageShare("gazebo_ros"),
-                    "launch", "gazebo.launch.py"
-                ])
-            ])
-        ),
-    
-        # State publisher
-        Node(
-            package="robot_state_publisher",
-            executable="robot_state_publisher",
-            name="robot_state_publisher",
-            parameters=[{
-                "robot_description": ParameterValue(
-                    Command([
-                        FindExecutable(name="xacro"), " ",
-                        LaunchConfiguration("model"), " ",
-                        "prefix:=", LaunchConfiguration("prefix"), " ",
-                        "use_gazebo_controllers:=", LaunchConfiguration("use_gazebo_controllers"),
-                        " ",
-                        "use_gazebo_odom:=", LaunchConfiguration("use_gazebo_odom"),
-                        " ",
-                    ]),
-                    value_type=str
-                )
-            }],
-            output="screen"
-        ),
-
-        TimerAction(
-            period=3.0,
-            actions=[
-                Node(
-                    package="gazebo_ros",
-                    executable="spawn_entity.py",
-                    arguments=[
-                        "-topic", "/robot_description",
-                        "-entity", "puzzlebot",
-                        "-x", "0.0",  # X position
-                        "-y", "0.0",  # Y position
-                        "-z", "0.2",  # Z position
-                        "-R", "0",    # Roll
-                        "-P", "0",    # Pitch
-                        "-Y", "0"     # Yaw
-                    ],
-                    output="screen"
-                )
-            ]
-        ),
-
-        # Spawn Gazebo model (wall model)
-        Node(
-            package="gazebo_ros",
-            executable="spawn_entity.py",  # Using spawn_entity.py instead of spawn_model.py
-            arguments=[
-                "-file", os.path.join(gazebo_model_path, "model.sdf"),  # Replace with model.sdf path
-                "-entity", "wall_model",  # Correct entity name here
-                "-robot_namespace", "wall"
-            ],
-            output="screen"
-        ),
 
         # Optional RViz launch
         Node(
@@ -144,35 +80,6 @@ def generate_launch_description():
             name="rviz2",
             output="screen",
             arguments=["-d", default_rviz_config_path]
-        ),
-        
-        # Custom puzzlebot nodes
-        Node(
-            package="puzzlebot_kinematics",
-            executable="differential_inverse_kinematics.py",
-            name="differential_inverse_kinematics",
-            output="screen",
-        ),
-
-        Node(
-            package="puzzlebot_kinematics",
-            executable="differential_direct_kinematics.py",
-            name="differential_direct_kinematics",
-            output="screen",
-        ),
-
-        Node(
-            package="puzzlebot_kinematics",
-            executable="puzzlebot_transforms.py",
-            name="puzzlebot_transforms",
-            output="screen",
-        ),
-
-        Node(
-            package="puzzlebot_kinematics",
-            executable="wheel_transform_broadcaster.py",
-            name="wheel_transform_broadcaster",
-            output="screen",
         ),
         
         Node(
