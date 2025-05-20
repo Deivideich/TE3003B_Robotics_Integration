@@ -8,6 +8,18 @@ from launch_ros.substitutions import FindPackageShare
 from launch.conditions import IfCondition
 from launch_ros.parameter_descriptions import ParameterValue
 
+mcl_args = {
+    'useClustering': False,
+    'numParticles': 1000,
+    'minClusterDistance': 0.5,
+    'clusterEps': 0.5,
+    'clusterMinSamples': 0.05,
+    'scaleRdParticles': 0.0,
+    'minDistance': 0.05,
+    'minAngle': 10.0,
+    'repropagateCountNeeded': 1,
+    'HZ' : 20.0,
+}
 
 def generate_launch_description():
     pkg_urdf_name = "puzzlebot_description"
@@ -26,6 +38,14 @@ def generate_launch_description():
 
     return LaunchDescription([
         # Launch arguments
+        *[
+            DeclareLaunchArgument(
+                name=key,
+                default_value=str(value) if isinstance(value, (int, float)) else ("true" if value else "false"),
+                description=f"Parameter {key} for monte_carlo_localisation node"
+            )
+            for key, value in mcl_args.items()
+        ],
         DeclareLaunchArgument(
             name="model", default_value=default_model_path,
             description="Absolute path to robot urdf.xacro file"
@@ -126,7 +146,7 @@ def generate_launch_description():
             arguments=["-d", default_rviz_config_path]
         ),
         
-                # Custom puzzlebot nodes
+        # Custom puzzlebot nodes
         Node(
             package="puzzlebot_kinematics",
             executable="differential_inverse_kinematics.py",
@@ -168,7 +188,16 @@ def generate_launch_description():
             name="monte_carlo_localisation",
             output="screen",
             parameters=[
-                {"useClustering": LaunchConfiguration("use_mcl_clustering")}
+                {key: LaunchConfiguration(key) for key in mcl_args.keys()}
+            ],
+        ),
+
+        Node(
+            package="puzzlebot_navigation",
+            executable="local_map.py",
+            name="local_map",
+            output="screen",
+            parameters=[
             ],
         ),
         
