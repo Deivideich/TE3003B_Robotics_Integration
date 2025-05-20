@@ -1,0 +1,43 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://ros.org/wiki/xacro" name="simple_rectangle">
+
+  <!-- Rectangle dimensions -->
+  <xacro:property name="length" value="0.5"/>  <!-- x-axis -->
+  <xacro:property name="width" value="0.3"/>   <!-- y-axis -->
+  <xacro:property name="height" value="0.2"/>  <!-- z-axis -->
+  <xacro:property name="box_mass" value="1.0"/>
+
+  <!-- Rectangle macro -->
+  <xacro:macro name="rectangle_box" params="prefix x y z">
+    <link name="${prefix}base_link">
+      <visual>
+        <origin xyz="0 0 ${height / 2}" rpy="0 0 0"/>
+        <geometry>
+          <box size="${length} ${width} ${height}"/>
+        </geometry>
+        <material name="blue">
+          <color rgba="0 0 1 1"/>
+        </material>
+      </visual>
+
+      <collision>
+        <origin xyz="0 0 ${height / 2}" rpy="0 0 0"/>
+        <geometry>
+          <box size="${length} ${width} ${height}"/>
+        </geometry>
+      </collision>
+
+      <inertial>
+        <origin xyz="0 0 ${height / 2}" rpy="0 0 0"/>
+        <mass value="${box_mass}"/>
+        <inertia ixx="0.01" ixy="0.0" ixz="0.0"
+                 iyy="0.01" iyz="0.0"
+                 izz="0.01"/>
+      </inertial>
+    </link>
+  </xacro:macro>
+
+  <!-- Macro instantiation -->
+  <xacro:rectangle_box prefix="rect_" x="0.0" y="0.0" z="0.0"/>
+
+</robot>
