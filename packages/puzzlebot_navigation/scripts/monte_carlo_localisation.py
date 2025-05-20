@@ -2,7 +2,6 @@
 import math
 import numpy as np
 import ctypes
-from sklearn.cluster import DBSCAN
 
 import rclpy
 from rclpy.node import Node
@@ -52,7 +51,10 @@ class MCLNode(Node):
         
         self.particles = []        
         self.particle_weights = np.zeros(self.num_particles)
-        self.cluster_dbscan = DBSCAN(eps=self.cluster_eps, min_samples=int(self.cluster_min_samples), metric='euclidean', n_jobs=-1)
+        
+        if self.useClustering:
+            from sklearn.cluster import DBSCAN
+            self.cluster_dbscan = DBSCAN(eps=self.cluster_eps, min_samples=int(self.cluster_min_samples), metric='euclidean', n_jobs=-1)
         
         self.map = None
         self.map_received = False
@@ -333,6 +335,10 @@ class MCLNode(Node):
 
     #TODO: this function is good but slow, DBSSCAN compute wise is not efficient, need to find a better way to cluster
     def estimate_pose(self):
+        if hasattr(self, 'maxParticle'):
+            return np.array([float(self.maxParticle[0]), float(self.maxParticle[1]), float(self.maxParticle[2])])
+        else: 
+            return np.array([0.0, 0.0, 0.0])
         if self.useClustering:
             clusters = self.cluster_dbscan.fit(self.particles)
             unique_labels = set(clusters.labels_)
