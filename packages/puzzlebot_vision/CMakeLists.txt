@@ -23,6 +23,10 @@ install(PROGRAMS
   DESTINATION lib/${PROJECT_NAME}
 )
 
+# Install directories
+install(DIRECTORY launch
+  DESTINATION share/${PROJECT_NAME})
+
 ######################### Testing  #########################
 ##For testing
 if(BUILD_TESTING)
