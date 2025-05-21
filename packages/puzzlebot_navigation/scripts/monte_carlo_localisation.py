@@ -16,7 +16,7 @@ import os
 import ament_index_python.packages
 
 package_prefix = ament_index_python.packages.get_package_prefix('puzzlebot_navigation')
-cpp_mcl = os.path.join(package_prefix, 'lib', 'puzzlebot_navigation', 'mcl_utils.so')
+cpp_mcl = os.path.join(package_prefix, 'lib', 'puzzlebot_navigation', 'libmcl_utils.so')
 
 ARGS = {
     'useClustering': False,
@@ -25,8 +25,8 @@ ARGS = {
     'clusterEps': 0.5,
     'clusterMinSamples': 0.05,
     'scaleRdParticles': 0.0,
-    'minDistance': 0.05,
-    'minAngle': 10.0,
+    'minDistance': 0.005,
+    'minAngle': 5.0,
     'repropagateCountNeeded': 1,
     'HZ' : 20.0,
 }

@@ -15,8 +15,8 @@ mcl_args = {
     'clusterEps': 0.5,
     'clusterMinSamples': 0.05,
     'scaleRdParticles': 0.0,
-    'minDistance': 0.05,
-    'minAngle': 10.0,
+    'minDistance': 0.01,
+    'minAngle': 5.0,
     'repropagateCountNeeded': 1,
     'HZ' : 20.0,
 }
@@ -59,7 +59,7 @@ def generate_launch_description():
             description="Prefix for robot link/joint names"
         ),
         DeclareLaunchArgument(
-            name="use_gazebo_controllers", default_value="false",
+            name="use_gazebo_controllers", default_value="true",
             description="Whether to include Gazebo controllers"
         ),
         DeclareLaunchArgument(
@@ -180,6 +180,7 @@ def generate_launch_description():
             executable="custom_map_server.py",
             name="custom_map_server",
             output="screen",
+            # parameters=[{"map_yaml_file" : LaunchConfiguration("map_file")}],
         ),
         
         Node(
