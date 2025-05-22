@@ -10,8 +10,8 @@ from cv_bridge import CvBridge, CvBridgeError
 class Publisher(Node):
     def __init__(self):
         super().__init__('image_publisher')
-        self.declare_parameter('width', 400)
-        self.declare_parameter('height', 200)
+        self.declare_parameter('width', 0)
+        self.declare_parameter('height', 0)
 
         self.width = self.get_parameter('width').get_parameter_value().integer_value
         self.height = self.get_parameter('height').get_parameter_value().integer_value
@@ -22,7 +22,8 @@ class Publisher(Node):
     def cam_callback(self, msg):
         try:
             self.frame = CvBridge().imgmsg_to_cv2(msg, desired_encoding='bgr8')
-            self.frame = cv2.resize(self.frame, (self.width, self.height))
+            if self.width != 0 and self.height != 0:
+                self.frame = cv2.resize(self.frame, (self.width, self.height))
             print('Frame received')
             result, endcoded = cv2.imencode('.jpg', self.frame, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
             self.msg_comp.format = 'jpeg'
