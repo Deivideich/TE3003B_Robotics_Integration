@@ -16,7 +16,7 @@ mcl_args = {
     'clusterMinSamples': 0.05,
     'scaleRdParticles': 0.0,
     'minDistance': 0.01,
-    'minAngle': 10.0,
+    'minAngle': 5.0,
     'repropagateCountNeeded': 1,
     'HZ' : 20.0,
 }

@@ -8,18 +8,26 @@ from launch_ros.substitutions import FindPackageShare
 from launch.conditions import IfCondition
 from launch_ros.parameter_descriptions import ParameterValue
 
-port_micro = LaunchConfiguration('port_micro')
-port_lidar = LaunchConfiguration('port_lidar')
+
 
 def generate_launch_description():
     pkg_lidar_name = "rplidar_ros"
     pkg_kinematics_name = "puzzlebot_kinematics"
-    # Paths
+    pkg_vision_name = "puzzlebot_vision"
+
+    # packages share paths
     pkg_kinematics_share = FindPackageShare(pkg_kinematics_name).find(pkg_kinematics_name)
     pkg_lidar_share = FindPackageShare(pkg_lidar_name).find(pkg_lidar_name)
+    pkg_vision_share = FindPackageShare(pkg_vision_name).find(pkg_vision_name)
+    
+    # Launcher paths
     lidar_launch_path = os.path.join(pkg_lidar_share, 'launch', 'rplidar_a1_launch.py')
     real_kinematics_launch_path = os.path.join(pkg_kinematics_share, 'launch', 'puzzlebot_kinematic_real.launch.py')
+    vision_launch_path = os.path.join(pkg_vision_share, 'launch', 'camera.launch.py')
 
+    port_micro = LaunchConfiguration('port_micro')
+    port_lidar = LaunchConfiguration('port_lidar')
+    
     return LaunchDescription([
         # Launch arguments
         
@@ -31,6 +39,11 @@ def generate_launch_description():
         DeclareLaunchArgument(
             name="port_lidar", default_value="/dev/rplidar",
             description="Which USB port to use for Lidar connection"
+        ),
+        
+        DeclareLaunchArgument(
+            name="default_vision", default_value="false",
+            description="Whether to activate vision submodule"
         ),
 
         # Lidar Launch
@@ -51,7 +64,11 @@ def generate_launch_description():
             output='screen'
         ),
 
-        #Camera
+        #Camera launcher
+        # IncludeLaunchDescription(
+        #     condition=IfCondition(LaunchConfiguration('default_vision')),
+        #     PythonLaunchDescriptionSource(vision_launch_path),
+        # ),
         
         # Puzzlebot kinematics launcher
         IncludeLaunchDescription(
