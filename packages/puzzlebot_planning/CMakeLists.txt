@@ -5,24 +5,41 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
+
+
 # Find dependencies
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 # Keep other find_package calls if needed later, but comment out for now
 find_package(nav_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
+find_package(visualization_msgs REQUIRED)
 find_package(puzzlebot_interfaces REQUIRED)
 # find_package(visualization_msgs REQUIRED)
 find_package(tf2 REQUIRED)
 # find_package(tf2_ros REQUIRED)
 # find_package(tf2_geometry_msgs REQUIRED)
+find_package(ompl CONFIG)
 
 # Add model library
 add_library(puzzlebot_planning_include SHARED
     src/model/se2_state.cpp
     src/model/trajectory.cpp
     src/planners/astar_planner.cpp
+    src/planners/ompl_planner.cpp
+    src/state_validity/map_validator.cpp
+    src/state_validity/circle_map_validator.cpp
 )
+ament_target_dependencies(puzzlebot_planning_include PUBLIC
+    rclcpp
+    ompl
+    nav_msgs
+    geometry_msgs
+    puzzlebot_interfaces
+    tf2
+)
+target_link_libraries(puzzlebot_planning_include PUBLIC ompl)
+
 target_include_directories(puzzlebot_planning_include PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>
@@ -31,6 +48,16 @@ target_include_directories(puzzlebot_planning_include PUBLIC
 ament_target_dependencies(puzzlebot_planning_include PUBLIC
     # Add dependencies like rclcpp if model needs ROS types directly
 )
+
+# Ensure OMPL include directories are added
+if(ompl_FOUND)
+  target_include_directories(puzzlebot_planning_include PUBLIC ${OMPL_INCLUDE_DIRS})
+endif()
+
+# Ensure OMPL libraries are linked
+if(ompl_FOUND)
+  target_link_libraries(puzzlebot_planning_include PUBLIC ${OMPL_LIBRARIES})
+endif()
 
 # MAIN EXECUTABLES
 # Add the main  A* service node executable
@@ -74,6 +101,27 @@ install(
     DESTINATION lib/${PROJECT_NAME}
 )
 
+# Add the main OMPL service node executable
+add_executable(ompl_planner_server src/nodes/ompl_planner_server.cpp)
+ament_target_dependencies(ompl_planner_server PUBLIC
+    rclcpp
+    nav_msgs
+    geometry_msgs
+    tf2
+    puzzlebot_interfaces
+)
+# Link the node against the model library
+target_link_libraries(ompl_planner_server PUBLIC
+    puzzlebot_planning_include
+)
+# Specify dependencies for building order
+add_dependencies(ompl_planner_server puzzlebot_planning_include)
+# Install the main A* node executable
+install(
+    TARGETS ompl_planner_server
+    DESTINATION lib/${PROJECT_NAME}
+)
+
 # TESTING EXECUTABLES
 # Add the ROS test node executable
 add_executable(test_state_node src/nodes/tests/test_state_node.cpp)
@@ -101,6 +149,12 @@ ament_target_dependencies(test_astar_planner_node PUBLIC rclcpp)
 target_link_libraries(test_astar_planner_node PUBLIC puzzlebot_planning_include)
 add_dependencies(test_astar_planner_node puzzlebot_planning_include)
 
+# state validator test
+add_executable(test_map_validator_node src/nodes/tests/test_map_validator_node.cpp)
+ament_target_dependencies(test_map_validator_node PUBLIC rclcpp visualization_msgs)
+target_link_libraries(test_map_validator_node PUBLIC puzzlebot_planning_include)
+add_dependencies(test_map_validator_node puzzlebot_planning_include)
+
 # Install headers
 install(
     DIRECTORY include/
@@ -127,6 +181,11 @@ install(
 
 install(
     TARGETS test_astar_planner_node
+    DESTINATION lib/${PROJECT_NAME}
+)
+
+install(
+    TARGETS test_map_validator_node
     DESTINATION lib/${PROJECT_NAME}
 )
 

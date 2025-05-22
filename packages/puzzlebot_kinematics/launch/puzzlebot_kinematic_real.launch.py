@@ -5,6 +5,7 @@ from launch.substitutions import (
     LaunchConfiguration,
     PathJoinSubstitution,
 )
+from launch.conditions import IfCondition
 import launch_ros.actions
 import os
 
@@ -25,7 +26,12 @@ def generate_launch_description():
 
     # Declare launch arguments
     args = []
-
+    args.append(
+        launch.actions.DeclareLaunchArgument(
+            name="rviz", default_value="false",
+            description="Launch RViz?"
+        )
+    )
     args.append(
         launch.actions.DeclareLaunchArgument(
             name="model",
@@ -69,47 +75,26 @@ def generate_launch_description():
         parameters=[robot_description_param],
     )
 
-    # Conditionally launch joint_state_publisher_gui
-    joint_state_publisher_node = launch_ros.actions.Node(
-        package="joint_state_publisher_gui",
-        executable="joint_state_publisher_gui",
-        condition=launch.conditions.IfCondition(LaunchConfiguration("use_gui")),
-    )
-
     rviz_node = launch_ros.actions.Node(
         package="rviz2",
         executable="rviz2",
         name="rviz2",
         output="screen",
         arguments=["-d", LaunchConfiguration("rvizconfig")],
+        condition=IfCondition(LaunchConfiguration("rviz"))
     )
     
-        # Custom puzzlebot nodes
-    differential_ik_node = launch_ros.actions.Node(
-        package="puzzlebot_kinematics",
-        executable="differential_inverse_kinematics.py",
-        name="differential_inverse_kinematics",
-        output="screen",
-    )
-
     differential_dk_node = launch_ros.actions.Node(
         package="puzzlebot_kinematics",
-        executable="differential_direct_kinematics.py",
-        name="differential_direct_kinematics",
-        output="screen",
-    )
-
-    transforms_node = launch_ros.actions.Node(
-        package="puzzlebot_kinematics",
-        executable="puzzlebot_transforms.py",
-        name="puzzlebot_transforms",
+        executable="differential_direct_kinematics_real.py",
+        name="differential_direct_kinematics_real",
         output="screen",
     )
 
     wheel_tf_broadcaster_node = launch_ros.actions.Node(
         package="puzzlebot_kinematics",
-        executable="wheel_transform_broadcaster.py",
-        name="wheel_transform_broadcaster",
+        executable="wheel_transform_broadcaster_real.py",
+        name="wheel_transform_broadcaster_real",
         output="screen",
     )
 
@@ -118,10 +103,7 @@ def generate_launch_description():
     nodes = [
         robot_state_publisher_node,
         rviz_node,
-        joint_state_publisher_node,  # Only launches if 'use_gui' is true
-        differential_ik_node,
         differential_dk_node,
-        transforms_node,
         wheel_tf_broadcaster_node,
     ]
 
