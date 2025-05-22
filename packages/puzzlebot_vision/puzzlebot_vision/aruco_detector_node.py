@@ -19,6 +19,8 @@ from geometry_msgs.msg import TransformStamped
 
 from puzzlebot_vision.aruco_detector.ArucoDetector import ArucoDetector
 
+ARUCO_THRESHOLD = 0.4  # Adjust this threshold based on your needs
+
 class ArucoDetectorNode(Node):
     def __init__(self):
         super().__init__('aruco_detector_node')
@@ -151,51 +153,23 @@ class ArucoDetectorNode(Node):
             t.transform.rotation.w = q[3]
 
             self.tf_broadcaster.sendTransform(t)
-
-
-    def image_callback(self, msg):
-        # Convert ROS Image message to OpenCV image
-        frame = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
-
-        # Detect ArUco markers
-        detections = self.aruco_detector.detect(frame)
-
-        for det in detections:
-            self.get_logger().info(
-                f"🟢 Marker ID {det['id']}:\n"
-                f"    Translation: x={det['tvec'][0]:.2f}, y={det['tvec'][1]:.2f}, z={det['tvec'][2]:.2f}\n"
-                f"    Rotation vector: {det['rvec']}"
-            )
-            
-            marker_id = det['id']
-            if marker_id not in self.marker_poses:
-                self.get_logger().warn(f"⚠️ Marker ID {marker_id} not in map.")
-                continue
-            
-            self.get_logger().info(f"🟢 Marker ID {marker_id} detected.")
-
-            # Get map->aruco transform
-            marker_data = self.marker_poses[marker_id]
-            rvec_map = np.array(marker_data["rotation"])
-            tvec_map = np.array(marker_data["translation"])
-            T_map_to_aruco = self.get_transform_matrix(rvec_map, tvec_map)
-
-            # Get camera->aruco and invert it
-            T_camera_to_aruco = self.get_transform_matrix(det["rvec"], det["tvec"])
-            T_aruco_to_camera = self.invert_transform(T_camera_to_aruco)
-
-            # map → base_link = map → aruco × aruco → camera
-            T_map_to_base = T_map_to_aruco @ T_aruco_to_camera
-
-            # Convert to ROS pose message
-            pose_msg = PoseWithCovarianceStamped()
-            pose_msg.header.frame_id = "map"
-            pose_msg.header.stamp = self.get_clock().now().to_msg()
-            pose_msg.pose.pose = self.transform_to_pose(T_map_to_base).pose
-            pose_msg.pose.covariance = [0.0]*36  # Optional
-
-            self.pose_publisher.publish(pose_msg)
-
+        
+            # Publish pose for AMCL if the Euclidean distance is below the threshold
+            if np.linalg.norm(det["tvec"]) < ARUCO_THRESHOLD:
+                initial_pose = PoseWithCovarianceStamped()
+                initial_pose.header.stamp = self.get_clock().now().to_msg()
+                initial_pose.header.frame_id = "map"
+                initial_pose.pose.pose.position.x = det["tvec"][0]
+                initial_pose.pose.pose.position.y = det["tvec"][1]
+                initial_pose.pose.pose.position.z = det["tvec"][2]
+                initial_pose.pose.pose.orientation.x = q[0]
+                initial_pose.pose.pose.orientation.y = q[1]
+                initial_pose.pose.pose.orientation.z = q[2]
+                initial_pose.pose.pose.orientation.w = q[3]
+                initial_pose.pose.covariance = [0.0] * 36
+                self.pose_publisher.publish(initial_pose)
+                self.get_logger().info(f"📦 Published initial pose for AMCL: {initial_pose.pose.pose.position.x}, {initial_pose.pose.pose.position.y}, {initial_pose.pose.pose.position.z}")
+                
     
 def main(args=None):
     rclpy.init(args=args)
