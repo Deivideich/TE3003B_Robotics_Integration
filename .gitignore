@@ -5,3 +5,9 @@ install/
 *.o
 *.so
 *.exe
+*.pb.*
+*_pb2*.py
+__pycache__/
+*.mod
+*.sum
+*.stamp

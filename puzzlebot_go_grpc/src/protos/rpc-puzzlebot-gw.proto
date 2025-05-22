@@ -1,0 +1,32 @@
+//author AECL
+
+syntax = "proto3";
+import "google/protobuf/empty.proto";
+package RPCPuzzlebotPKG;
+
+option go_package = "example.com/puzzlebot_grpc_service/protos";
+import "google/api/annotations.proto";
+
+service PuzzlebotRPC {
+    rpc GetTrailersData (google.protobuf.Empty) returns (TrailersArray){
+        option(google.api.http) = {
+            post: "/puzzlebotgrpcservice/gettrailersdata"
+            body: "*"
+        };
+    };
+    rpc GetImage (google.protobuf.Empty) returns (CompressedImage){        
+        option(google.api.http) = {
+            post: "/puzzlebotgrpcservice/getimage"
+            body: "*"
+        };
+    };
+}
+
+message TrailersArray {
+    repeated int32 ids = 1 [packed=true]; 
+    repeated int32 boxes = 2 [packed=true]; 
+}
+
+message CompressedImage {
+    bytes img = 1;
+}
