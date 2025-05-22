@@ -20,12 +20,18 @@ find_package(puzzlebot_interfaces REQUIRED)
 install(DIRECTORY scripts rviz maps launch resources
   DESTINATION share/${PROJECT_NAME})
 
+  # Install shared C++ library
+install(
+  DIRECTORY utils/cpp/
+  DESTINATION lib/${PROJECT_NAME}
+  FILES_MATCHING PATTERN "*.so"
+)
+
+
 # Include every Python script within the src and scripts directory
 # file(GLOB PYTHON_CLASSES src/*.py)
 file(GLOB_RECURSE PYTHON_SCRIPTS scripts/*.py)
 install(PROGRAMS
-
-  # ${PYTHON_CLASSES}
   ${PYTHON_SCRIPTS}
   DESTINATION lib/${PROJECT_NAME}
 )
