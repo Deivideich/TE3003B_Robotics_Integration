@@ -5,6 +5,8 @@ import torch.nn as nn
 from torchvision.models import efficientnet_v2_s
 import sys
 import argparse
+import json
+import os
 
 # Define hyperparameters
 IMAGE_SIZE = 100
@@ -38,6 +40,13 @@ def single_inference(model, image_path, device):
 
     return predicted.item()
 
+def load_label_mapping(model_path):
+    json_path = model_path.replace('.pth', '.json')
+    if os.path.exists(json_path):
+        with open(json_path, 'r') as f:
+            return json.load(f)
+    return None
+
 def main():
     parser = argparse.ArgumentParser(description="Single Image Inference")
     parser.add_argument('--model', type=str, required=True, help="Path to the model file")
@@ -53,9 +62,16 @@ def main():
     model.load_state_dict(torch.load(args.model))
     model = model.to(device)
 
+    # Load label mapping if available
+    label_mapping = load_label_mapping(args.model)
+
     # Perform single inference
-    label = single_inference(model, args.image, device)
-    print(f"Predicted Label: {label}")
+    label_id = single_inference(model, args.image, device)
+    if label_mapping:
+        label_name = label_mapping.get(str(label_id), "Unknown")
+        print(f"Predicted Label: {label_id} ({label_name})")
+    else:
+        print(f"Predicted Label: {label_id}")
 
 if __name__ == "__main__":
     main()

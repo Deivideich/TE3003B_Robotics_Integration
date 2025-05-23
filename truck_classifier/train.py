@@ -5,6 +5,7 @@ import os
 from datetime import datetime
 from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter  # Add this import
+import json
 
 import torch.nn as nn
 import torch.optim as optim
@@ -13,7 +14,7 @@ import argparse
 
 # Define hyperparameters
 BATCH_SIZE = 8
-NUM_EPOCHS = 20
+NUM_EPOCHS = 10
 LEARNING_RATE = 0.0005
 IMAGE_SIZE = 100
 NUM_CLASSES = 3
@@ -59,6 +60,12 @@ def train_model(model, train_loader, criterion, optimizer, device, writer, epoch
     
     return epoch_loss, epoch_acc
 
+def save_label_mapping(label_mapping, model_path):
+    label_mapping_path = model_path.replace('.pth', '.json')
+    with open(label_mapping_path, 'w') as f:
+        json.dump(label_mapping, f)
+    print(f"Label mapping saved at {label_mapping_path}")
+
 def main():
     # Set device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -86,7 +93,7 @@ def main():
         root=args.train_folder,
         transform=transform
     )
-    
+
     train_loader = DataLoader(
         train_dataset,
         batch_size=BATCH_SIZE,
@@ -114,8 +121,13 @@ def main():
 
     # Save the model with datetime
     os.makedirs('models', exist_ok=True)
-    model_path = f"models/truck_classifier_{datetime.now().strftime('%Y%m%d-%H%M%S')}.pth"
+    model_path = os.path.join('models', f"truck_classifier_{datetime.now().strftime('%Y%m%d-%H%M%S')}.pth")
     torch.save(model.state_dict(), model_path)
+
+    # Save label mapping
+    label_mapping = {idx: class_name for class_name, idx in train_dataset.class_to_idx.items()}
+    save_label_mapping(label_mapping, model_path)
+
     print(f"Training completed and model saved at {model_path}!")
     
     # Close tensorboard writer
