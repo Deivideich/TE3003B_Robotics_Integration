@@ -47,7 +47,7 @@ def generate_launch_description():
             description="Prefix for robot link/joint names"
         ),
         DeclareLaunchArgument(
-            name="use_gazebo_controllers", default_value="false",
+            name="use_gazebo_controllers", default_value="true",
             description="Whether to include Gazebo controllers"
         ),
         DeclareLaunchArgument(
@@ -131,12 +131,75 @@ def generate_launch_description():
                     arguments=[
                         "-file", urdf_file,
                         "-entity", "box",
-                        "-x", "1.0",
-                        "-y", "1.0",
+                        "-x", "1.1",
+                        "-y", "0.7",
                         "-z", "0.0",
                         "-R", "0",
                         "-P", "0",
                         "-Y", "0"
+                    ],
+                    output="screen"
+                ),
+            ]
+        ),
+        
+        TimerAction(
+            period=5.0,
+            actions=[
+                Node(
+                    package="gazebo_ros",
+                    executable="spawn_entity.py",
+                    arguments=[
+                        "-file", urdf_file,
+                        "-entity", "box_2",
+                        "-x", "0.5",
+                        "-y", "1.2",
+                        "-z", "0.0",
+                        "-R", "0.0",
+                        "-P", "0",
+                        "-Y", "0"
+                    ],
+                    output="screen"
+                ),
+            ]
+        ),
+                
+        TimerAction(
+            period=5.0,
+            actions=[
+                Node(
+                    package="gazebo_ros",
+                    executable="spawn_entity.py",
+                    arguments=[
+                        "-file", urdf_file,
+                        "-entity", "box_3",
+                        "-x", "1.2",
+                        "-y", "0.2",
+                        "-z", "0.0",
+                        "-R", "0",
+                        "-P", "0",
+                        "-Y", "0"
+                    ],
+                    output="screen"
+                ),
+            ]
+        ),
+        
+        TimerAction(
+            period=5.0,
+            actions=[
+                Node(
+                    package="gazebo_ros",
+                    executable="spawn_entity.py",
+                    arguments=[
+                        "-file", urdf_file,
+                        "-entity", "box_4",
+                        "-x", "0.5",
+                        "-y", "0.5",
+                        "-z", "0.0",
+                        "-R", "0.0",
+                        "-P", "0",
+                        "-Y", "1.57"
                     ],
                     output="screen"
                 ),
