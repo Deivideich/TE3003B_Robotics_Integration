@@ -17,7 +17,7 @@ find_package(tf2_geometry_msgs REQUIRED)
 
 
 #Install directories
-install(DIRECTORY urdf  meshes  models materials
+install(DIRECTORY urdf  meshes  models
   DESTINATION share/${PROJECT_NAME})
 
 # Include every Python script within the src and scripts directory

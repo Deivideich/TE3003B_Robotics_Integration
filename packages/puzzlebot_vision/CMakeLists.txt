@@ -27,6 +27,11 @@ install(PROGRAMS
 install(DIRECTORY launch
   DESTINATION share/${PROJECT_NAME})
 
+install(DIRECTORY
+  ${PROJECT_NAME}/aruco_detector/aruco_map_poses/
+  DESTINATION lib/${PROJECT_NAME}/aruco_detector/aruco_map_poses/
+)
+
 ######################### Testing  #########################
 ##For testing
 if(BUILD_TESTING)

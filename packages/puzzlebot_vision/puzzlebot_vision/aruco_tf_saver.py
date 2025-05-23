@@ -13,18 +13,23 @@ from tf2_geometry_msgs import do_transform_pose
 from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped
 from scipy.spatial.transform import Rotation as R
 from builtin_interfaces.msg import Time
-
 from puzzlebot_vision.aruco_detector.ArucoDetector import ArucoDetector
+import os
+import threading
+import sys
+import importlib.resources
+
 
 class ArucoDetectorNode(Node):
     def __init__(self):
         super().__init__('aruco_detector_node')
-        print("DEBUG")
         self.aruco_detector = ArucoDetector()
         self.bridge = CvBridge()
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
         self.tf_broadcaster = TransformBroadcaster(self)
+        self.tf_base = None
+        self.loaded_saved_poses = []
 
         self.subscription = self.create_subscription(
             CompressedImage,
@@ -40,10 +45,28 @@ class ArucoDetectorNode(Node):
             10
         )
 
+        self.timer = self.create_timer(0.1, self.handle_timer)
+        self.saved_tf_timer = self.create_timer(0.01, self.broadcast_saved_tfs)
 
-        self.camera_frame = "camera_link"  # Change this to your actual camera frame name
+        self.file_path = os.path.join(
+        os.path.dirname(os.path.realpath(__file__)),  # current file directory
+         "aruco_detector", "aruco_map_poses", "aruco_poses.json"
+        )
+        self.file_path = os.path.abspath(self.file_path)
+
+        # Ensure the directory for the file exists
+        dir_path = os.path.dirname(self.file_path)
+        if not os.path.exists(dir_path):
+            os.makedirs(dir_path, exist_ok=True)
+
+
+        self.camera_frame = "camera_base_link"
         self.map_frame = "map"
         self.saved_ids = set()
+
+        self.allow_updates = True
+        self.allow_new_saves = True
+        threading.Thread(target=self.listen_for_keys, daemon=True).start()
 
     def compressed_image_callback(self, msg):
         try:
@@ -51,7 +74,7 @@ class ArucoDetectorNode(Node):
             self.process_frame(frame, msg.header.stamp)
         except Exception as e:
             self.get_logger().error(f"Image processing failed: {e}")
-    
+
     def handle_initial_pose(self, msg: PoseWithCovarianceStamped):
         t = TransformStamped()
         t.header.stamp = self.get_clock().now().to_msg()
@@ -61,11 +84,43 @@ class ArucoDetectorNode(Node):
         t.transform.translation.x = msg.pose.pose.position.x
         t.transform.translation.y = msg.pose.pose.position.y
         t.transform.translation.z = msg.pose.pose.position.z
-
         t.transform.rotation = msg.pose.pose.orientation
 
-        self.tf_broadcaster.sendTransform(t)
+        self.tf_base = t
         self.get_logger().info("📡 Published map → odom transform based on initialpose.")
+
+    def handle_timer(self):
+        if self.tf_base is None:
+            return
+        self.tf_base.header.stamp = self.get_clock().now().to_msg()
+        self.tf_broadcaster.sendTransform(self.tf_base)
+
+    def broadcast_saved_tfs(self):
+        if len(self.loaded_saved_poses) <= 0:
+            return
+        now = self.get_clock().now().to_msg()
+        try:
+            with open(self.file_path, 'r') as f:
+                poses = json.load(f)
+        except Exception as e:
+            self.get_logger().warn(f"Could not load JSON from {self.file_path}: {e}")
+            return
+
+        for pose in poses:
+            t = TransformStamped()
+            t.header.stamp = now
+            t.header.frame_id = "map"
+            t.child_frame_id = f"aruco_{pose['id']}"
+
+            t.transform.translation.x = pose['translation']['x']
+            t.transform.translation.y = pose['translation']['y']
+            t.transform.translation.z = pose['translation']['z']
+            t.transform.rotation.x = pose['rotation']['x']
+            t.transform.rotation.y = pose['rotation']['y']
+            t.transform.rotation.z = pose['rotation']['z']
+            t.transform.rotation.w = pose['rotation']['w']
+
+            self.tf_broadcaster.sendTransform(t)
 
     def process_frame(self, frame, stamp: Time):
         detections = self.aruco_detector.detect(frame)
@@ -74,12 +129,9 @@ class ArucoDetectorNode(Node):
             marker_id = det['id']
             rvec = np.array(det['rvec'], dtype=np.float64)
             tvec = np.array(det['tvec'], dtype=np.float64)
-
             T_camera_to_aruco = self.rvec_tvec_to_matrix(rvec, tvec)
             pose_cam = self.matrix_to_pose_stamped(T_camera_to_aruco, self.camera_frame, stamp)
-
             try:
-                # Lookup transform from map → camera_frame
                 tf_map_to_camera = self.tf_buffer.lookup_transform(
                     self.map_frame,
                     self.camera_frame,
@@ -87,13 +139,24 @@ class ArucoDetectorNode(Node):
                     timeout=rclpy.duration.Duration(seconds=0.5)
                 )
 
-                # Transform pose to map frame
-                pose_map = do_transform_pose(pose_cam, tf_map_to_camera)
+                pose_map = do_transform_pose(pose_cam.pose, tf_map_to_camera)
 
-                self.broadcast_tf(pose_map, marker_id)
-                if marker_id not in self.saved_ids:
-                    self.save_pose_to_json(marker_id, pose_map)
-                    self.saved_ids.add(marker_id)
+                pose_stamped_map = PoseStamped()
+                pose_stamped_map.header.frame_id = self.map_frame
+                pose_stamped_map.header.stamp = stamp
+                pose_stamped_map.pose = pose_map
+
+                # self.broadcast_tf(pose_stamped_map, marker_id)
+
+                if marker_id in self.saved_ids:
+                    if self.allow_updates:
+                        self.save_pose_to_json(marker_id, pose_stamped_map, self.file_path)
+                        # self.get_logger().info(f"♻️ Updated pose for marker {marker_id}")
+                else:
+                    if self.allow_new_saves:
+                        self.save_pose_to_json(marker_id, pose_stamped_map, self.file_path)
+                        self.saved_ids.add(marker_id)
+                        # self.get_logger().info(f"🆕 Saved new pose for marker {marker_id}")
 
             except Exception as e:
                 self.get_logger().warn(f"TF lookup failed: {e}")
@@ -127,10 +190,10 @@ class ArucoDetectorNode(Node):
         t = TransformStamped()
         t.header = pose_stamped.header
         t.child_frame_id = f"aruco_{marker_id}"
-
-        t.transform.translation = pose_stamped.pose.position
+        t.transform.translation.x = pose_stamped.pose.position.x
+        t.transform.translation.y = pose_stamped.pose.position.y
+        t.transform.translation.z = pose_stamped.pose.position.z
         t.transform.rotation = pose_stamped.pose.orientation
-
         self.tf_broadcaster.sendTransform(t)
 
     def save_pose_to_json(self, marker_id: int, pose_stamped: PoseStamped, filepath="aruco_poses.json"):
@@ -148,20 +211,36 @@ class ArucoDetectorNode(Node):
                 "w": pose_stamped.pose.orientation.w
             }
         }
-
+        self.loaded_saved_poses.append(pose_data)
         existing = []
         try:
-            with open(filepath, 'r') as f:
-                existing = json.load(f)
-                existing = [e for e in existing if e["id"] != marker_id]
-        except FileNotFoundError:
-            pass
+            if os.path.exists(filepath) and os.path.getsize(filepath) > 0:
+                with open(filepath, 'r') as f:
+                    existing = json.load(f)
+                    existing = [e for e in existing if e["id"] != marker_id]
+            else:
+                self.get_logger().info(f"File {filepath} not found or empty. Creating new file.")
+        except Exception as e:
+            self.get_logger().warn(f"Could not load JSON from {filepath}: {e}")
+            existing = []
 
         existing.append(pose_data)
-        with open(filepath, 'w') as f:
-            json.dump(existing, f, indent=2)
+        try:
+            with open(filepath, 'w') as f:
+                json.dump(existing, f, indent=2)
+        except Exception as e:
+            self.get_logger().info(f"Error: {e}")
 
-        self.get_logger().info(f"✅ Saved ArUco marker {marker_id} pose to {filepath}")
+    def listen_for_keys(self):
+        self.get_logger().info("🎮 Press 'u' to toggle updates, 'n' to toggle new saves.")
+        while True:
+            key = sys.stdin.read(1)
+            if key == 'u':
+                self.allow_updates = not self.allow_updates
+                self.get_logger().info(f"🛠️ Updates {'enabled' if self.allow_updates else 'disabled'}.")
+            elif key == 'n':
+                self.allow_new_saves = not self.allow_new_saves
+                self.get_logger().info(f"💾 New saves {'enabled' if self.allow_new_saves else 'disabled'}.")
 
 
 def main(args=None):
@@ -170,6 +249,7 @@ def main(args=None):
     rclpy.spin(node)
     node.destroy_node()
     rclpy.shutdown()
+
 
 if __name__ == "__main__":
     main()
