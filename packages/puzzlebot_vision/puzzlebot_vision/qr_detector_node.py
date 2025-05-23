@@ -14,8 +14,8 @@ class QRDetectorNode(Node):
         super().__init__('qr_detector_node')
 
         # Declare parameters
-        self.declare_parameter('camera_topic', '/camera/image')
-        self.declare_parameter('compressed_camera_topic', '/camera/image/compressed')
+        self.declare_parameter('camera_topic', '/video_source/raw')
+        self.declare_parameter('compressed_camera_topic', '/video_source/compressed')
 
         # Get parameters
         self.camera_topic = self.get_parameter('camera_topic').get_parameter_value().string_value
