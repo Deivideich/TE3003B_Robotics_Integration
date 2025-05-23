@@ -5,15 +5,15 @@ import numpy as np
 from torchvision import transforms
 import tqdm
 import cv2
-
+import math
 # Constants for augmentations
 ZOOM_FACTOR = 1.2  # Maximum zoom factor
-BRIGHTNESS_FACTOR = 0.5  # Brightness adjustment range (0.5 to 1.5)
-CONTRAST_FACTOR = 0.5  # Contrast adjustment range (0.5 to 1.5)
-SATURATION_FACTOR = 0.5  # Saturation adjustment range (0.5 to 1.5)
+BRIGHTNESS_FACTOR = 0.2  # Brightness adjustment range (0.5 to 1.5)
+CONTRAST_FACTOR = 0.1  # Contrast adjustment range (0.5 to 1.5)
+SATURATION_FACTOR = 0.25  # Saturation adjustment range (0.5 to 1.5)
 BLOB_COUNT_MIN = 0  # Minimum number of blobs to add
 BLOB_COUNT_MAX = 3  # Maximum number of blobs to add
-BLOB_SIZE = (5, 15)  # Size range of blobs (min, max)
+BLOB_SIZE = (15, 150)  # Size range of blobs (min, max)
 
 MULTIPLIER = 10
 
@@ -39,6 +39,7 @@ def zoom_image(image, zoom_factor = -1):
     width, height = image.size
     factor = ZOOM_FACTOR if zoom_factor == -1 else zoom_factor
     
+    factor = random.uniform(1, factor)  # Random zoom factor between 1 and ZOOM_FACTOR
     # Calculate new dimensions
     new_width = int(width * factor)
     new_height = int(height * factor)
@@ -69,14 +70,42 @@ def adjust_saturation(image):
     factor = random.uniform(1 - SATURATION_FACTOR, 1 + SATURATION_FACTOR)
     return enhancer.enhance(factor)
 
+def generate_blob_points(center_x, center_y, radius, irregularity=0.5, spikiness=0.5, num_points=12):
+    """
+    Generate a blob-like shape using a star/polygon algorithm with randomness.
+    """
+    points = []
+    angle_step = 2 * math.pi / num_points
+
+    for i in range(num_points):
+        angle = i * angle_step
+        # Vary radius for spikiness
+        rand_radius = radius * (1 + random.uniform(-spikiness, spikiness))
+        # Add offset for irregularity
+        offset_angle = angle + random.uniform(-irregularity, irregularity) * angle_step
+        x = center_x + rand_radius * math.cos(offset_angle)
+        y = center_y + rand_radius * math.sin(offset_angle)
+        points.append((x, y))
+
+    return points
+
 def add_blobs(image):
     draw = ImageDraw.Draw(image)
     blob_count = random.randint(BLOB_COUNT_MIN, BLOB_COUNT_MAX)
+
     for _ in range(blob_count):
         x = random.randint(0, image.width)
         y = random.randint(0, image.height)
         size = random.randint(*BLOB_SIZE)
-        draw.ellipse((x, y, x + size, y + size), fill=(random.randint(0, 255), random.randint(0, 255), random.randint(0, 255)))
+        color = (
+            random.randint(0, 255),
+            random.randint(0, 255),
+            random.randint(0, 255),
+            random.randint(100, 255)  # Optional alpha
+        )
+        blob_points = generate_blob_points(x, y, size, irregularity=0.4, spikiness=0.6, num_points=random.randint(8, 16))
+        draw.polygon(blob_points, fill=color)
+
     return image
 
 # Main augmentation function
