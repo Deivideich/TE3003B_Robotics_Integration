@@ -10,7 +10,7 @@ import json
 from geometry_msgs.msg import TransformStamped
 from tf2_ros import Buffer, TransformListener, TransformBroadcaster
 from tf2_geometry_msgs import do_transform_pose
-from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped
 from scipy.spatial.transform import Rotation as R
 from builtin_interfaces.msg import Time
 
@@ -33,6 +33,14 @@ class ArucoDetectorNode(Node):
             10
         )
 
+        self.initial_pose_sub = self.create_subscription(
+            PoseWithCovarianceStamped,
+            "/initialpose",
+            self.handle_initial_pose,
+            10
+        )
+
+
         self.camera_frame = "camera_link"  # Change this to your actual camera frame name
         self.map_frame = "map"
         self.saved_ids = set()
@@ -43,6 +51,21 @@ class ArucoDetectorNode(Node):
             self.process_frame(frame, msg.header.stamp)
         except Exception as e:
             self.get_logger().error(f"Image processing failed: {e}")
+    
+    def handle_initial_pose(self, msg: PoseWithCovarianceStamped):
+        t = TransformStamped()
+        t.header.stamp = self.get_clock().now().to_msg()
+        t.header.frame_id = "map"
+        t.child_frame_id = "odom"
+
+        t.transform.translation.x = msg.pose.pose.position.x
+        t.transform.translation.y = msg.pose.pose.position.y
+        t.transform.translation.z = msg.pose.pose.position.z
+
+        t.transform.rotation = msg.pose.pose.orientation
+
+        self.tf_broadcaster.sendTransform(t)
+        self.get_logger().info("📡 Published map → odom transform based on initialpose.")
 
     def process_frame(self, frame, stamp: Time):
         detections = self.aruco_detector.detect(frame)
