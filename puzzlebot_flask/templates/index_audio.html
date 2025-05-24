@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Estado de Tráiler</title>
+    <!-- TailwindCSS vía CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <script>
+      function updateTrailersStatuses() {
+        fetch('/api/trailers')
+          .then(response => response.json())
+          .then(data => {
+            if(!data.trailers || data.trailers.length < 3) return;
+
+            document.getElementById('status1').textContent = `${data.trailers[0].boxes} cajas`;
+            document.getElementById('status2').textContent = `${data.trailers[1].boxes} cajas`;
+            document.getElementById('status3').textContent = `${data.trailers[2].boxes} cajas`;
+            
+          });
+      }
+
+      function updateImage() {
+        fetch('/api/image')
+          .then(response => response.text())
+          .then(result_img => {
+            document.getElementById('result_img').src = result_img;
+          });
+      }
+
+      setInterval(updateTrailersStatuses, 500);
+      setInterval(updateImage, 500);
+    </script>
+  </head>
+
+  <body class="bg-gray-300 min-h-screen flex flex-col text-black font-bold relative">
+
+    <!-- Logo en la esquina superior izquierda -->
+    <div class="absolute top-4 left-4">
+      <img src="/static/logo.png" alt="Logo" class="h-24 w-auto" />
+    </div>
+
+    <div class="absolute top-4 right-4">
+      <img src="/static/tec_logo.png" alt="logo-tec" class="h-24 w-auto" />
+    </div>
+
+    <!-- Imagen centrada en la parte superior -->
+    <div class="flex flex-col items-center mt-24 mb-8">
+      
+        <div class="bg-black bg-opacity-60 text-white px-3 py-1 rounded mb-2">
+            Imagen del Puzzlebot
+        </div>
+
+      <img id="result_img" class="rounded-xl shadow-lg w-[750px] h-auto" />
+
+      
+    </div>
+
+    <div class="mt-6 text-center">
+      <button id="recordButton"
+        class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded">
+        Comenzar grabación
+      </button>
+    </div>
+    
+    <script>
+      let isRecording = false;
+      let mediaRecorder;
+      let audioChunks = [];
+    
+      const recordButton = document.getElementById('recordButton');
+
+      // function blobToBase64(blob) {
+      //   return new Promise((resolve, _) => {
+      //     const reader = new FileReader();
+      //     reader.onloadend = () => resolve(reader.result.split(',')[1]);
+      //     reader.readAsDataURL(blob); 
+      //   });
+      // }
+    
+      recordButton.addEventListener('click', async () => {
+        if (!isRecording) {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          mediaRecorder = new MediaRecorder(stream);
+          audioChunks = [];
+    
+          mediaRecorder.ondataavailable = event => {
+            if (event.data.size > 0) {
+              audioChunks.push(event.data);
+            }
+          };
+    
+          mediaRecorder.onstop = async () => {
+            const blob = new Blob(audioChunks, { type: 'audio/wav' });
+            const formData = new FormData();
+            formData.append('audio', blob, 'grabacion.wav');
+    
+            // Enviar a Flask por POST
+            await fetch('/upload_audio', {
+              method: 'POST',
+              body: formData
+            });
+            
+            console.log('Se envio audio a Flask');
+
+            // // Enviar a GAteway con base64
+            // const base64Audio = await blobToBase64(blob);
+
+            // await fetch("http://localhost:8042/upload_audio", {
+            //   method:"POST",
+            //   headers: {
+            //     "Content-Type": "application/json"
+            //   },
+            //   body: JSON.stringify({ audio: base64Audio})
+            // });
+
+            console.log("AUdio enviado a Gateway");
+
+            alert("Audio enviado al servidor");
+          };
+    
+          mediaRecorder.start();
+          isRecording = true;
+          recordButton.textContent = 'Detener grabación';
+        } else {
+          mediaRecorder.stop();
+          isRecording = false;
+          recordButton.textContent = 'Comenzar grabación';
+        }
+      });
+    </script>
+    
+
+
+
+    <!-- Coordenadas en la parte inferior dividida en 3 -->
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 px-4 flex-grow items-end mb-10 text-center">
+      <div class="bg-white bg-opacity-80 p-4 rounded-lg shadow">
+        <h2 class="text-xl">Estatus del trailer 1</h2>
+        <p id='status1' class="coord text-lg">Esperando...</p>
+      </div>
+      <div class="bg-white bg-opacity-80 p-4 rounded-lg shadow">
+        <h2 class="text-xl">Estatus del trailer 2</h2>
+        <p id='status2' class="coord text-lg">Esperando...</p>
+      </div>
+      <div class="bg-white bg-opacity-80 p-4 rounded-lg shadow">
+        <h2 class="text-xl">Estatus del trailer 3</h2>
+        <p id='status3' class="coord text-lg">Esperando...</p>
+      </div>
+    </div>
+
+  </body>
+</html>
