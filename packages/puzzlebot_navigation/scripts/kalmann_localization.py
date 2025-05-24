@@ -40,6 +40,7 @@ class KalmannNode(Node):
         
         self.Kalmann_gain = np.zeros((3, 2)) #CREO
         self.uPose = np.zeros((1, 3))
+        self.landmark_status = False
 
     def joint_state_callback(self, msg):
         # Extract wheel velocities from JointState message
@@ -57,38 +58,23 @@ class KalmannNode(Node):
         self.last_time = now
 
         # Direct kinematics
-        v = self.wheel_radius * (omega_r + omega_l) / 2
-        w = self.wheel_radius * (omega_r - omega_l) / self.wheel_base
+        self.v = self.wheel_radius * (omega_r + omega_l) / 2
+        self.w = self.wheel_radius * (omega_r - omega_l) / self.wheel_base
 
-        
+        self.Kalmann_filter()
 
-        self.x += v * math.cos(self.theta) * dt
-        self.y += v * math.sin(self.theta) * dt
-        self.theta += w * dt
-        self.theta = (self.theta + math.pi) % (2 * math.pi) - math.pi
-        # Convert yaw to quaternion
-        qz = math.sin(self.theta / 2.0)
-        qw = math.cos(self.theta / 2.0)
-        # Create Odometry message
-        t = TransformStamped()
-        t.header.stamp = self.get_clock().now().to_msg()
-        t.header.frame_id = 'odom'
-        t.child_frame_id = 'base_footprint'
-        t.transform.translation.x = self.x
-        t.transform.translation.y = self.y
-        t.transform.translation.z = 0.0
-        t.transform.rotation.z = qz
-        t.transform.rotation.w = qw
-        self.tf_broadcaster.sendTransform(t)
-        # self.get_logger().info(f'Pose: x={self.x:.2f}, y={self.y:.2f}, theta={self.theta:.2f}')
 
         
 
 
     def calcMiuHat(self):
-        self.uHat[0] += self.dt * self.v * math.cos(self.theta)
-        self.uHat[1] += self.dt * self.v * math.sin(self.theta) 
-        self.uHat[2] += self.dt * self.w
+        self.theta = self.uPose[2] #Anterior theta
+
+
+        self.uHat[0] = self.uPose[0] + self.dt * self.v * math.cos(self.theta)
+        self.uHat[1] = self.uPose[1] + self.dt * self.v * math.sin(self.theta) 
+        self.uHat[2] = self.uPose[2] + self.dt * self.w
+        self.uHat[2] = (self.uHat[2] + math.pi) % (2 * math.pi) - math.pi #Corregir theta
 
     def calc_Gradient_h(self):
         self.gradient_H[0, 2] = -self.dt * self.v * math.sin(self.theta)
@@ -137,11 +123,32 @@ class KalmannNode(Node):
         
 
     def calc_miu(self):
-        #z_vec = 
-        self.uPose = self.uHat + self.Kalmann_gain @ ( - self.zHat)
+        z_vec = np.ones((1, 3))
+        self.uPose = self.uHat + self.Kalmann_gain @ (z_vec - self.zHat)
 
     def calc_sigma(self):
         self.Sigma_cov = (np.ones((3,3)) - self.Kalmann_gain @ self.gradient_G) @ self.Sigma_hat
+
+    def set_previous(self):
+        return
+
+    def Kalmann_filter(self):
+        
+        self.calcMiuHat()
+        self.calc_Gradient_h()
+        self.calc_SigmaHat()
+
+        if(self.landmark_status):
+            self.Calc_zHat()
+            self.calc_Gradient_h()
+            self.Calc_Z()
+            self.calc_KalmannGain()
+            self.calc_miu()
+            self.calc_sigma()
+
+        self.set_previous()
+
+
 
 def main(args=None):
     rclpy.init(args=args)
