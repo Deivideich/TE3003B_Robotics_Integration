@@ -2,21 +2,28 @@
 
 syntax = "proto3";
 import "google/protobuf/empty.proto";
+
 package RPCPuzzlebotPKG;
 
-option go_package = "example.com/puzzlebot_grpc_service/protos";
+option go_package = "dreamteam.com/puzzlebot-grpc/protos";
 import "google/api/annotations.proto";
 
 service PuzzlebotRPC {
     rpc GetTrailersData (google.protobuf.Empty) returns (TrailersArray){
         option(google.api.http) = {
-            post: "/puzzlebotgrpcservice/gettrailersdata"
+            post: "/gettrailersdata"
             body: "*"
         };
     };
     rpc GetImage (google.protobuf.Empty) returns (CompressedImage){        
         option(google.api.http) = {
-            post: "/puzzlebotgrpcservice/getimage"
+            post: "/getimage"
+            body: "*"
+        };
+    };
+    rpc GetAudio (Audio) returns (google.protobuf.Empty){
+        option(google.api.http) = {
+            post: "/getaudio"
             body: "*"
         };
     };
@@ -29,4 +36,8 @@ message TrailersArray {
 
 message CompressedImage {
     bytes img = 1;
+}
+
+message Audio {
+    bytes audio = 1;
 }

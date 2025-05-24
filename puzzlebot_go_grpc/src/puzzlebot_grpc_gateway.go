@@ -2,26 +2,27 @@
 
 package main
 
-import(
+import (
 	"context"
 	"flag"
 	"fmt"
 	"net/http"
+
 	"github.com/golang/glog"
 
 	"google.golang.org/grpc"
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
-	
-	gw "example.com/puzzlebot_grpc_service/protos"
+
+	gw "dreamteam.com/puzzlebot-grpc/protos"
 )
 
 var (
 	grpcServerEndpoint = flag.String("grpc-server-endpoint", "127.0.0.1:7042", "gRPC svr endpoint")
-	gw_port = "8042"
+	gw_port            = "8042"
 )
 
-func run() error{
+func run() error {
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -29,7 +30,7 @@ func run() error{
 	mux := runtime.NewServeMux()
 	opts := []grpc.DialOption{grpc.WithInsecure()}
 	err := gw.RegisterPuzzlebotRPCHandlerFromEndpoint(ctx, mux, *grpcServerEndpoint, opts)
-	if err != nil{
+	if err != nil {
 		return err
 	}
 
@@ -40,7 +41,7 @@ func main() {
 	flag.Parse()
 	defer glog.Flush()
 	fmt.Println("Starting Gateway at " + gw_port)
-	if err := run(); err != nil{
+	if err := run(); err != nil {
 		glog.Fatal(err)
 	}
 }
