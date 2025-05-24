@@ -27,7 +27,7 @@ class PuzzlebotRPCImpl(pz_grpc.PuzzlebotRPCServicer):
         self.node.declare_parameter("numOfTrailers", 3)
         self.num_of_trailers = self.get_parameter('numOfTrailers').get_parameter_value().integer_value
         self.trailer_array_sub = self.node.create_subscription(TrailerArray, '/trailer_array', self.update_trailers_data, 10)
-        self.compressed_image_sub = self.node.create_subscription(CompressedImage, '/compressed_image', self.update_compressed_image, 10)
+        self.compressed_image_sub = self.node.create_subscription(CompressedImage, '/video_source/compressed', self.update_compressed_image, 10)
 
     def update_compressed_image(self, msg):
         self.compressed_image = msg.data
@@ -55,14 +55,20 @@ class PuzzlebotRPCImpl(pz_grpc.PuzzlebotRPCServicer):
             return results
 
         try:
-            np_arr = np.frombuffer(self.compressed_image, np.uint8)
-            image = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
-            compressed_image = cv2.imencode('.jpg', image)[1].tobytes()
+            compressed_image = self.compressed_image.tobytes()
             results.img = compressed_image
         except Exception as e:
             print("Failed to process image:", str(e))
 
         return results
+    
+    def GetAudio(self, request, context):
+        print("gRPC Audio request from: " + context.peer())
+
+        audio = request.audio
+
+        with open('audio.wav', 'wb') as f:
+            f.write(request.audio)
 
 terminate = threading.Event()
 

@@ -9,6 +9,8 @@ service PuzzlebotRPC {
     };
     rpc GetImage (google.protobuf.Empty) returns (CompressedImage){        
     };
+    rpc GetAudio (Audio) returns (google.protobuf.Empty){
+    };
 }
 
 message TrailersArray {
@@ -18,4 +20,8 @@ message TrailersArray {
 
 message CompressedImage {
     bytes img = 1;
+}
+
+message Audio {
+    bytes audio = 1;
 }
