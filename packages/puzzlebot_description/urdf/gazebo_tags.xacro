@@ -10,7 +10,7 @@
       <gazebo>
         <plugin name="diff_drive" filename="libgazebo_ros_diff_drive.so">
           <ros>
-            <remapping>odom:=/gazebo_odom</remapping>
+            <remapping>odom:=/odom</remapping>
           </ros>
 
           <!-- Wheel Info -->
