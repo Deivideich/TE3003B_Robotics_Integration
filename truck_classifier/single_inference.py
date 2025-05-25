@@ -7,7 +7,14 @@ import sys
 import argparse
 import json
 import os
+import cv2
+import numpy as np
 
+parser = argparse.ArgumentParser(description="Single Image Inference")
+parser.add_argument('--model', type=str, required=True, help="Path to the model file")
+parser.add_argument('--image', type=str, required=True, help="Path to the image file")
+args = parser.parse_args()
+    
 # Define hyperparameters
 IMAGE_SIZE = 100
 NUM_CLASSES = 3
@@ -30,6 +37,10 @@ def single_inference(model, image_path, device):
 
     # Load and preprocess the image
     image = Image.open(image_path).convert('RGB')
+    cv2_img = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
+    cv2.imshow('Image to model', cv2_img)
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
     image = transform(image).unsqueeze(0).to(device)
 
     # Perform inference
@@ -48,10 +59,7 @@ def load_label_mapping(model_path):
     return None
 
 def main():
-    parser = argparse.ArgumentParser(description="Single Image Inference")
-    parser.add_argument('--model', type=str, required=True, help="Path to the model file")
-    parser.add_argument('--image', type=str, required=True, help="Path to the image file")
-    args = parser.parse_args()
+    
 
     # Set device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
