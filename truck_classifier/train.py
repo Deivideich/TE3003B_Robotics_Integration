@@ -14,7 +14,7 @@ import argparse
 
 # Define hyperparameters
 BATCH_SIZE = 8
-NUM_EPOCHS = 10
+NUM_EPOCHS = 25
 LEARNING_RATE = 0.0005
 IMAGE_SIZE = 100
 NUM_CLASSES = 3
@@ -60,6 +60,28 @@ def train_model(model, train_loader, criterion, optimizer, device, writer, epoch
     
     return epoch_loss, epoch_acc
 
+def validate_model(model, val_loader, criterion, device):
+    model.eval()
+    running_loss = 0.0
+    correct = 0
+    total = 0
+
+    with torch.no_grad():
+        for images, labels in val_loader:
+            images, labels = images.to(device), labels.to(device)
+            outputs = model(images)
+            loss = criterion(outputs, labels)
+            
+            running_loss += loss.item()
+            _, predicted = outputs.max(1)
+            total += labels.size(0)
+            correct += predicted.eq(labels).sum().item()
+    
+    val_loss = running_loss / len(val_loader)
+    val_acc = 100. * correct / total
+    
+    return val_loss, val_acc
+
 def save_label_mapping(label_mapping, model_path):
     label_mapping_path = model_path.replace('.pth', '.json')
     with open(label_mapping_path, 'w') as f:
@@ -76,22 +98,41 @@ def main():
     writer = SummaryWriter(f"runs/{writer_name}")
 
     # Define transforms
-    transform = transforms.Compose([
+    train_transform = transforms.Compose([
+        transforms.Resize((IMAGE_SIZE, IMAGE_SIZE)),
+        transforms.RandomHorizontalFlip(p=0.5),
+        transforms.RandomRotation(degrees=10),
+        transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                           std=[0.229, 0.224, 0.225])
+    ])
+
+    val_transform = transforms.Compose([
         transforms.Resize((IMAGE_SIZE, IMAGE_SIZE)),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406],
                            std=[0.229, 0.224, 0.225])
     ])
 
-    # Load dataset
     # Parse command line arguments
     parser = argparse.ArgumentParser()
-    parser.add_argument('--train-folder', type=str, required=True, help='Path to training data folder')
+    parser.add_argument('--dataset-folder', type=str, required=True, help='Path to the dataset folder (should contain train/ and val/ subfolders)')
     args = parser.parse_args()
 
+    # Construct paths for train and validation
+    train_folder = os.path.join(args.dataset_folder, 'train')
+    val_folder = os.path.join(args.dataset_folder, 'val')
+
+    # Validate that train folder exists
+    if not os.path.exists(train_folder):
+        print(f"Error: Training folder '{train_folder}' does not exist!")
+        return
+
+    # Load training dataset
     train_dataset = datasets.ImageFolder(
-        root=args.train_folder,
-        transform=transform
+        root=train_folder,
+        transform=train_transform
     )
 
     train_loader = DataLoader(
@@ -100,6 +141,23 @@ def main():
         shuffle=True,
         num_workers=4
     )
+
+    # Load validation dataset if available
+    val_loader = None
+    if os.path.exists(val_folder):
+        val_dataset = datasets.ImageFolder(
+            root=val_folder,
+            transform=val_transform
+        )
+        val_loader = DataLoader(
+            val_dataset,
+            batch_size=BATCH_SIZE,
+            shuffle=False,
+            num_workers=4
+        )
+        print(f"Validation dataset loaded with {len(val_dataset)} images")
+    else:
+        print("No validation folder found. Training without validation.")
 
     # Create model
     model = create_model()
@@ -113,22 +171,49 @@ def main():
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
 
-    # Training loop
+    # Training loop with validation
     print("Starting training...")
+    best_val_acc = 0.0
+    best_model_path = None
+    
     for epoch in range(NUM_EPOCHS):
         train_loss, train_acc = train_model(model, train_loader, criterion, optimizer, device, writer, epoch)
-        print(f'Epoch [{epoch+1}/{NUM_EPOCHS}] Loss: {train_loss:.4f} Acc: {train_acc:.2f}%')
+        
+        # Validate if validation loader is available
+        if val_loader:
+            val_loss, val_acc = validate_model(model, val_loader, criterion, device)
+            
+            # Log validation metrics
+            writer.add_scalar('Validation/Loss', val_loss, epoch)
+            writer.add_scalar('Validation/Accuracy', val_acc, epoch)
+            
+            print(f'Epoch [{epoch+1}/{NUM_EPOCHS}] Train Loss: {train_loss:.4f} Train Acc: {train_acc:.2f}% | Val Loss: {val_loss:.4f} Val Acc: {val_acc:.2f}%')
+            
+            # Save best model based on validation accuracy
+            if val_acc > best_val_acc:
+                best_val_acc = val_acc
+                os.makedirs('models', exist_ok=True)
+                best_model_path = os.path.join('models', f"truck_classifier_best_{datetime.now().strftime('%Y%m%d-%H%M%S')}.pth")
+                torch.save(model.state_dict(), best_model_path)
+                print(f"New best model saved with validation accuracy: {val_acc:.2f}%")
+        else:
+            print(f'Epoch [{epoch+1}/{NUM_EPOCHS}] Train Loss: {train_loss:.4f} Train Acc: {train_acc:.2f}%')
 
-    # Save the model with datetime
+    # Save the final model
     os.makedirs('models', exist_ok=True)
-    model_path = os.path.join('models', f"truck_classifier_{datetime.now().strftime('%Y%m%d-%H%M%S')}.pth")
-    torch.save(model.state_dict(), model_path)
+    final_model_path = os.path.join('models', f"truck_classifier_final_{datetime.now().strftime('%Y%m%d-%H%M%S')}.pth")
+    torch.save(model.state_dict(), final_model_path)
 
-    # Save label mapping
+    # Save label mapping for both best and final models
     label_mapping = {idx: class_name for class_name, idx in train_dataset.class_to_idx.items()}
-    save_label_mapping(label_mapping, model_path)
+    save_label_mapping(label_mapping, final_model_path)
+    if best_model_path:
+        save_label_mapping(label_mapping, best_model_path)
 
-    print(f"Training completed and model saved at {model_path}!")
+    print(f"Training completed!")
+    print(f"Final model saved at: {final_model_path}")
+    if best_model_path:
+        print(f"Best model saved at: {best_model_path} (Val Acc: {best_val_acc:.2f}%)")
     
     # Close tensorboard writer
     writer.close()
