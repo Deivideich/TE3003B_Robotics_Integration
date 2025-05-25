@@ -51,7 +51,7 @@ def generate_launch_description():
             description="Whether to include Gazebo controllers"
         ),
         DeclareLaunchArgument(
-            name="use_gazebo_odom", default_value="false",
+            name="use_gazebo_odom", default_value="true",
             description="Whether to include Gazebo odometry"
         ),
 
@@ -64,7 +64,14 @@ def generate_launch_description():
                 ])
             ])
         ),
-    
+        
+        Node(
+            package="joint_state_publisher",
+            executable="joint_state_publisher",
+            name="joint_state_publisher",
+            output="screen"
+        ),
+
         # State publisher
         Node(
             package="robot_state_publisher",
