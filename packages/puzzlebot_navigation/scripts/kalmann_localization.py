@@ -1,9 +1,16 @@
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import JointState
+from builtin_interfaces.msg import Time
+from std_msgs.msg import Header
+from geometry_msgs.msg import PoseStamped
 from tf2_ros import TransformBroadcaster, TransformStamped
 import math
 import numpy as np
+import cv2
+import tf_transformations
+from builtin_interfaces.msg import Time
+
 
 class KalmannNode(Node):
     def __init__(self):
@@ -11,15 +18,21 @@ class KalmannNode(Node):
 
         # SUBSCRIBERS
         self.create_subscription(JointState, '/joint_states', self.joint_state_callback, 10)
+        #self.create_subscription() #Subscriber del ARUCO id
+        # Aqui tiene que ir el subscriber que me de la posicion de los marcadores
+
+        #PUBLISHERS
+        self.pub_pos = self.create_publisher(PoseStamped, '/estimated_pose', 10)
 
         self.wheel_radius = 0.05
-        self.wheel_base = 0.19
+        self.wheel_base = 0.19 #0.168?
         self.dt = 0.0
 
         self.omega_l = 0.0
         self.omega_r = 0.0
 
-        self.uHat = np.zeros((1, 3))
+        self.uHat = np.zeros((3, 1))
+        self.theta_prev = 0.0
 
         self.gradient_H = np.zeros((3,3))
         self.gradient_H[0,0] = 1
@@ -29,7 +42,9 @@ class KalmannNode(Node):
         self.Sigma_cov = np.zeros((3,3))
         self.Sigma_hat = np.zeros((3,3))
         self.error_Q = np.zeros((3,3))
-        self.zHat = np.zeros((1, 2))
+        self.zHat = np.zeros((2, 1))
+
+        self.valid_id = [0, 1, 2, 3, 4, 5, 6, 7] # Valid ARUCO IDs
 
         self.gradient_G = np.zeros((2,3))
         self.gradient_G[1, 2] = -1
@@ -37,9 +52,10 @@ class KalmannNode(Node):
         self.Z_mat = np.zeros((2,2))
         self.R_error = np.array([[0.1, 0],
                                  [0, 0.02]])
+        self.identity = self.ones((3,3))
         
-        self.Kalmann_gain = np.zeros((3, 2)) #CREO
-        self.uPose = np.zeros((1, 3))
+        self.Kalmann_gain = np.zeros((3, 2)) 
+        self.uPose = np.zeros((3, 1))
         self.landmark_status = False
 
     def joint_state_callback(self, msg):
@@ -63,30 +79,43 @@ class KalmannNode(Node):
 
         self.Kalmann_filter()
 
-
-        
-
-
     def calcMiuHat(self):
-        self.theta = self.uPose[2] #Anterior theta
 
-
-        self.uHat[0] = self.uPose[0] + self.dt * self.v * math.cos(self.theta)
-        self.uHat[1] = self.uPose[1] + self.dt * self.v * math.sin(self.theta) 
-        self.uHat[2] = self.uPose[2] + self.dt * self.w
+        self.uHat[0] += self.dt * self.v * math.cos(self.theta_prev)
+        self.uHat[1] += self.dt * self.v * math.sin(self.theta_prev) 
+        self.uHat[2] += self.dt * self.w
         self.uHat[2] = (self.uHat[2] + math.pi) % (2 * math.pi) - math.pi #Corregir theta
 
     def calc_Gradient_h(self):
-        self.gradient_H[0, 2] = -self.dt * self.v * math.sin(self.theta)
-        self.gradient_H[1, 2] = self.dt * self.v * math.cos(self.theta)
+        self.gradient_H[0, 2] = -self.dt * self.v * math.sin(self.theta_prev)
+        self.gradient_H[1, 2] = self.dt * self.v * math.cos(self.theta_prev)
         
     
     def calc_SigmaHat(self):
         self.Sigma_hat = self.gradient_H @ self.Sigma_cov @ self.gradient_H.T + self.error_Q
+
+    def obtain_tfs(self):
+        self.aruco_tf = self.tf_buffer.lookup_transform(
+                f'aruco_{self.marker_id}',           # target frame - aruco id
+                'map',      # source frame - map
+                rclpy.time.Time())  # time = 0 means "latest available"
+
+        self.aruco_to_robot_tf = self.tf_buffer.lookup_transform(
+                f'aruco_{self.marker_id}',           # target frame - aruco id
+                'base_footprint',      # source frame - base footprint
+                rclpy.time.Time())  # time = 0 means "latest available"
+
+            
         
     def Calc_zHat(self):
         # Nos falta la posicion de los landmarks en el mapa real.
         # Dependiendo del landmark que veamos
+
+        
+
+        self.m_x = self.aruco_tf.transform.position.x
+        self.m_y = self.aruco_tf.transform.position.y
+
         diff_x = self.m_x - self.uHat[0]
         diff_y = self.m_y - self.uHat[1]
 
@@ -94,8 +123,8 @@ class KalmannNode(Node):
         self.zHat[1] = math.atan2(diff_y, diff_x) - self.uHat[2]
 
 
-        noise = np.random.normal(0, 0.1, size=self.zHat.shape)
-        self.zHat += noise 
+        # noise = np.random.normal(0, 0.1, size=self.zHat.shape)
+        # self.zHat += noise 
 
     def calc_Gradient_g(self):
         x = self.uHat[0]
@@ -107,11 +136,12 @@ class KalmannNode(Node):
         diff_x = self.m_x - x
         diff_y = self.m_y - y
         
-        square_root = np.sqrt((diff_x)**2 + (diff_y)**2)
-        self.gradient_G[0, 0] = -x / square_root
-        self.gradient_G[0, 1] = -y / square_root
-
         sum_sq = diff_y ** 2 + diff_x ** 2
+        
+        self.gradient_G[0, 0] = -x / np.sqrt(sum_sq)
+        self.gradient_G[0, 1] = -y / np.sqrt(sum_sq)
+
+        
         self.gradient_G[1, 0] = diff_y / sum_sq
         self.gradient_G[1, 1] = -diff_x / sum_sq
 
@@ -121,30 +151,96 @@ class KalmannNode(Node):
     def calc_KalmannGain(self):
         self.Kalmann_gain = self.Sigma_hat @ self.gradient_G.T @ np.linalg.inv(self.Z_mat)
         
+    def euclidean_distance(self, x, y):
+        return np.sqrt( x*x + y*y )
+    
+    def yaw_from_quaternion(self, q):
+        try:
+            _, _, yaw = tf_transformations.euler_from_quaternion(q)
+            return yaw
+        except Exception as e:
+            self.get_logger().warn(f"Error converting quaternion to euler: {str(e)}")
+
+            return 0.0
 
     def calc_miu(self):
-        z_vec = np.ones((1, 3))
+        z_vec = np.ones((2, 1)) # This needs to be the SinglePoseMarker with Transforms. I need euclidean distance and angle from base_footprint I think?
+
+        
+
+        x = self.aruco_to_robot_tf.transform.position.x
+        y = self.aruco_to_robot_tf.transform.position.y
+
+        q = self.aruco_to_robot_tf.transform.rotation
+        
+
+        z_vec[0] = self.euclidean_distance(x, y)
+        z_vec[1] = self.yaw_from_quaternion(q)
+
         self.uPose = self.uHat + self.Kalmann_gain @ (z_vec - self.zHat)
+
+
+    def euler_to_quaternion(self, roll, pitch, yaw):
+        # Returns (x, y, z, w)
+        try:
+            return tf_transformations.quaternion_from_euler(roll, pitch, yaw)
+        except Exception as e:
+            self.get_logger().warn(f"Error converting euler to quaternion: {str(e)}")
+            return (0.0, 0.0, 0.0, 1.0)
+        
 
     def calc_sigma(self):
         self.Sigma_cov = (np.ones((3,3)) - self.Kalmann_gain @ self.gradient_G) @ self.Sigma_hat
 
     def set_previous(self):
-        return
+        self.uHat[0] = self.uPose[0]
+        self.uHat[1] = self.uPose[1]
+        self.uHat[2] = self.uPose[2]
+        self.theta_prev = self.uPose[2]
+
+        q = self.euler_to_quaternion(0.0, 0.0, self.uPose[2])
+        
+        msg = PoseStamped()
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.header.frame_id = 'pose_kalman' #TODO
+        msg.pose.position.x = self.uPose[0]
+        msg.pose.position.y = self.uPose[1]
+        msg.pose.position.z = 0.0
+        msg.pose.orientation.x = q[0]
+        msg.pose.orientation.y = q[1]
+        msg.pose.orientation.z = q[2]
+        msg.pose.orientation.w = q[3]
+
+        self.pub_pos(msg) 
+        
+        
+    def aruco_callback(self, msg):
+        id = msg.status
+        if(id in self.valid_id):
+            self.landmark_status = True
+            self.aruco_id = id
+        else:
+            self.landmark_status = False
 
     def Kalmann_filter(self):
         
         self.calcMiuHat()
         self.calc_Gradient_h()
         self.calc_SigmaHat()
-
+        # Check if landmark is visible, to correct using observations
         if(self.landmark_status):
+            self.obtain_tfs()
             self.Calc_zHat()
             self.calc_Gradient_h()
             self.Calc_Z()
             self.calc_KalmannGain()
             self.calc_miu()
             self.calc_sigma()
+
+        # If landmark is not visible, use prediction (Dead Reckoning only)
+        else:
+            self.uPose = self.uHat
+            self.Sigma_cov = self.Sigma_hat
 
         self.set_previous()
 
