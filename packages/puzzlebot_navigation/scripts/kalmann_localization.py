@@ -4,17 +4,19 @@ from sensor_msgs.msg import JointState
 from builtin_interfaces.msg import Time
 from std_msgs.msg import Header
 from geometry_msgs.msg import PoseStamped
-from tf2_ros import TransformBroadcaster, TransformStamped
 import math
 import numpy as np
 import cv2
 import tf_transformations
 from builtin_interfaces.msg import Time
+from tf2_ros import TransformBroadcaster, TransformStamped, Buffer, TransformListener
+import tf2_ros
+import time
 
 
-class KalmannNode(Node):
+class KalmanNode(Node):
     def __init__(self):
-        super().__init__('kalmann_node')
+        super().__init__('kalman_node')
 
         # SUBSCRIBERS
         self.create_subscription(JointState, '/joint_states', self.joint_state_callback, 10)
@@ -27,6 +29,8 @@ class KalmannNode(Node):
         self.wheel_radius = 0.05
         self.wheel_base = 0.19 #0.168?
         self.dt = 0.0
+        self.last_time = self.get_clock().now().seconds_nanoseconds()[0] + \
+                         self.get_clock().now().seconds_nanoseconds()[1] * 1e-9
 
         self.omega_l = 0.0
         self.omega_r = 0.0
@@ -41,7 +45,7 @@ class KalmannNode(Node):
 
         self.Sigma_cov = np.zeros((3,3))
         self.Sigma_hat = np.zeros((3,3))
-        self.error_Q = np.zeros((3,3))
+        self.error_Q = np.diag([0.1, 0.1, 0.01]) # Process noise covariance matrix
         self.zHat = np.zeros((2, 1))
 
         self.valid_id = [0, 1, 2, 3, 4, 5, 6, 7] # Valid ARUCO IDs
@@ -52,11 +56,18 @@ class KalmannNode(Node):
         self.Z_mat = np.zeros((2,2))
         self.R_error = np.array([[0.1, 0],
                                  [0, 0.02]])
-        self.identity = self.ones((3,3))
+        
+        self.identity = np.eye(3) # Identity matrix
         
         self.Kalmann_gain = np.zeros((3, 2)) 
         self.uPose = np.zeros((3, 1))
         self.landmark_status = False
+
+        self.tf_buffer = Buffer()
+        self.tf_listener = TransformListener(self.tf_buffer, self)
+        time.sleep(1)
+
+        
 
     def joint_state_callback(self, msg):
         # Extract wheel velocities from JointState message
@@ -95,23 +106,31 @@ class KalmannNode(Node):
         self.Sigma_hat = self.gradient_H @ self.Sigma_cov @ self.gradient_H.T + self.error_Q
 
     def obtain_tfs(self):
-        self.aruco_tf = self.tf_buffer.lookup_transform(
-                f'aruco_{self.marker_id}',           # target frame - aruco id
-                'map',      # source frame - map
-                rclpy.time.Time())  # time = 0 means "latest available"
+        try:
+            self.aruco_tf = self.tf_buffer.lookup_transform(
+                    f'aruco_{self.marker_id}',           # target frame - aruco id
+                    'map',      # source frame - map
+                    self.get_clock().now(),
+                    timeout=rclpy.duration.Duration(seconds=0.005))  # time = 0 means "latest available"
 
-        self.aruco_to_robot_tf = self.tf_buffer.lookup_transform(
+            self.aruco_to_robot_tf = self.tf_buffer.lookup_transform(
                 f'aruco_{self.marker_id}',           # target frame - aruco id
                 'base_footprint',      # source frame - base footprint
-                rclpy.time.Time())  # time = 0 means "latest available"
+                self.get_clock().now(),
+                timeout=rclpy.duration.Duration(seconds=0.005))  # time = 0 means "latest available"
+            
 
+
+        except Exception as e:
+            self.get_logger().warn(f'Error obtaining transforms: {str(e)}')
+            return False
+    
+        return True
             
         
     def Calc_zHat(self):
         # Nos falta la posicion de los landmarks en el mapa real.
         # Dependiendo del landmark que veamos
-
-        
 
         self.m_x = self.aruco_tf.transform.position.x
         self.m_y = self.aruco_tf.transform.position.y
@@ -127,23 +146,20 @@ class KalmannNode(Node):
         # self.zHat += noise 
 
     def calc_Gradient_g(self):
-        x = self.uHat[0]
-        y = self.uHat[1]
-        theta = self.uHat[2]
-
         #TODO
 
-        diff_x = self.m_x - x
-        diff_y = self.m_y - y
+        diff_x = self.m_x - self.uHat[0]
+        diff_y = self.m_y - self.uHat[1]
         
         sum_sq = diff_y ** 2 + diff_x ** 2
         
-        self.gradient_G[0, 0] = -x / np.sqrt(sum_sq)
-        self.gradient_G[0, 1] = -y / np.sqrt(sum_sq)
+        self.gradient_G[0, 0] = -diff_x / np.sqrt(sum_sq)
+        self.gradient_G[0, 1] = -diff_y / np.sqrt(sum_sq)
+        self.gradient_G[0, 2] = 0.0
 
-        
         self.gradient_G[1, 0] = diff_y / sum_sq
         self.gradient_G[1, 1] = -diff_x / sum_sq
+        self.gradient_G[1, 2] = -1.0
 
     def Calc_Z(self):
         self.Z_mat = self.gradient_G @ self.Sigma_hat @ self.gradient_G.T + self.R_error
@@ -211,7 +227,7 @@ class KalmannNode(Node):
         msg.pose.orientation.z = q[2]
         msg.pose.orientation.w = q[3]
 
-        self.pub_pos(msg) 
+        self.pub_pos.publish(msg) 
         
         
     def aruco_callback(self, msg):
@@ -248,7 +264,7 @@ class KalmannNode(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    node = KalmannNode()
+    node = KalmanNode()
     rclpy.spin(node)
     rclpy.shutdown()
         
