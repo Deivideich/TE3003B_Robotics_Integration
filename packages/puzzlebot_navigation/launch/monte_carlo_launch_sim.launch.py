@@ -34,7 +34,7 @@ def generate_launch_description():
     pkg_urdf_share = FindPackageShare(pkg_urdf_name).find(pkg_urdf_name)
     default_model_path = os.path.join(pkg_urdf_share, "urdf", "robot.xacro")
     default_rviz_config_path = os.path.join(pkg_nav_share, "rviz", "mcl.rviz")
-
+    gazebo_spawner_launch_path = os.path.join(pkg__kinematics_share, "launch", "puzzlebot_gazebo_spawner.launch.py")
     # Add the path for the Gazebo model (adjust based on where the saved model files are)
     gazebo_model_path = os.path.join(pkg_urdf_share, "models", "mcl_world")
 
@@ -68,45 +68,51 @@ def generate_launch_description():
             name="use_gazebo_odom", default_value="false",
             description="Whether to include Gazebo odometry"
         ),
+         DeclareLaunchArgument(
+            name="gazebo_model_file", default_value=os.path.join(pkg_urdf_share, "models", "mcl_world", "model.sdf"),
+            description="Path to the Gazebo model file"
+        ),
+        DeclareLaunchArgument(
+            name="spawn_entity_name", default_value="puzzlebot",
+            description="Name for the entity in Gazebo"
+        ),
         DeclareLaunchArgument(
             name="use_mcl_clustering", default_value="false",
             description="Whether to use clustering in MCL algorithm"
         ),
     
-        # State publisher
-        Node(
-            package="robot_state_publisher",
-            executable="robot_state_publisher",
-            name="robot_state_publisher",
-            parameters=[{
-                "robot_description": ParameterValue(
-                    Command([
-                        FindExecutable(name="xacro"), " ",
-                        LaunchConfiguration("model"), " ",
-                        "prefix:=", LaunchConfiguration("prefix"), " ",
-                        "use_gazebo_controllers:=", LaunchConfiguration("use_gazebo_controllers"),
-                        " ",
-                        "use_gazebo_odom:=", LaunchConfiguration("use_gazebo_odom"),
-                        " ",
-                    ]),
-                    value_type=str
-                )
-            }],
-            output="screen"
-        ),
+        # # State publisher
+        # Node(
+        #     package="robot_state_publisher",
+        #     executable="robot_state_publisher",
+        #     name="robot_state_publisher",
+        #     parameters=[{
+        #         "robot_description": ParameterValue(
+        #             Command([
+        #                 FindExecutable(name="xacro"), " ",
+        #                 LaunchConfiguration("model"), " ",
+        #                 "prefix:=", LaunchConfiguration("prefix"), " ",
+        #                 "use_gazebo_controllers:=", LaunchConfiguration("use_gazebo_controllers"),
+        #                 " ",
+        #                 "use_gazebo_odom:=", LaunchConfiguration("use_gazebo_odom"),
+        #                 " ",
+        #             ]),
+        #             value_type=str
+        #         )
+        #     }],
+        #     output="screen"
+        # ),
 
         # Include external launch file
+        # Include the Gazebo spawner launch file unconditionally with arguments
         IncludeLaunchDescription(
-            PythonLaunchDescriptionSource(
-                PathJoinSubstitution([
-                    FindPackageShare('puzzlebot_kinematics'),
-                    'launch',
-                    'puzzlebot_gazebo_spawner.launch.py'
-                ])
-            ),
+            PythonLaunchDescriptionSource(gazebo_spawner_launch_path),
             launch_arguments={
-                'prefix': LaunchConfiguration('prefix'),
-                'use_gazebo_controllers': LaunchConfiguration('use_gazebo_controllers')
+                "model": LaunchConfiguration("model"),  
+                "prefix": "",
+                "use_gazebo_controllers": "true",
+                "gazebo_model_file": LaunchConfiguration("gazebo_model_file"),
+                "spawn_entity_name": LaunchConfiguration("spawn_entity_name"),
             }.items()
         ),
 

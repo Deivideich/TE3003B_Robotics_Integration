@@ -10,7 +10,7 @@
 #include "nav_msgs/msg/path.hpp"
 #include "nav_msgs/msg/occupancy_grid.hpp"
 
-float ROBOT_RADIUS = 0.3; // Robot radius in meters
+float ROBOT_RADIUS = 0.1; // Robot radius in meters
 
 class OMPLPlannerServer : public rclcpp::Node {
 public:
