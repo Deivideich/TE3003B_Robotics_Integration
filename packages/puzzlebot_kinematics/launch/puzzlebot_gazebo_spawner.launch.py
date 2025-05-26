@@ -21,7 +21,7 @@ def generate_launch_description():
 
     # Add the path for the Gazebo model (adjust based on where the saved model files are)
     gazebo_model_path = os.path.join(pkg_urdf_share, "models", "mcl_world")
-    small_gazebo_model_path = os.path.join(pkg_urdf_share, "models", "PUZZLEBOT_ARENA_WALLS")
+    small_gazebo_model_path = os.path.join(pkg_urdf_share, "models", "mcl_world")
     obstacles_model_path = os.path.join(pkg_urdf_share, "urdf", "boxes.xacro")
 
        # === Step 2: Process the xacro file into URDF ===
@@ -53,6 +53,10 @@ def generate_launch_description():
         DeclareLaunchArgument(
             name="use_gazebo_odom", default_value="false",
             description="Whether to include Gazebo odometry"
+        ),
+        DeclareLaunchArgument(
+            name="spawn_obstacles", default_value="false",
+            description="Whether to spawn obstacles to the gazebo world"
         ),
 
         # Launch Gazebo
@@ -126,6 +130,7 @@ def generate_launch_description():
             period=5.0,
             actions=[
                 Node(
+                    condition=IfCondition(LaunchConfiguration("spawn_obstacles")),
                     package="gazebo_ros",
                     executable="spawn_entity.py",
                     arguments=[
@@ -147,6 +152,7 @@ def generate_launch_description():
             period=5.0,
             actions=[
                 Node(
+                    condition=IfCondition(LaunchConfiguration("spawn_obstacles")),
                     package="gazebo_ros",
                     executable="spawn_entity.py",
                     arguments=[
@@ -168,6 +174,7 @@ def generate_launch_description():
             period=5.0,
             actions=[
                 Node(
+                    condition=IfCondition(LaunchConfiguration("spawn_obstacles")),
                     package="gazebo_ros",
                     executable="spawn_entity.py",
                     arguments=[
@@ -189,6 +196,7 @@ def generate_launch_description():
             period=5.0,
             actions=[
                 Node(
+                    condition=IfCondition(LaunchConfiguration("spawn_obstacles")),
                     package="gazebo_ros",
                     executable="spawn_entity.py",
                     arguments=[

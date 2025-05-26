@@ -7,8 +7,8 @@
 #include "puzzlebot_controller/controllers/controller_interface.hpp"
 #include "puzzlebot_controller/controllers/pure_pursuit.hpp"
 #include "puzzlebot_controller/controllers/pid_controller.hpp"
+#include "puzzlebot_controller/controllers/mpc_controller.hpp"
 #include "puzzlebot_controller/controllers/bug2_controller.hpp"
-// #include "mpc_controller.hpp"
 #include "puzzlebot_interfaces/srv/plan_path.hpp"
 
 
@@ -32,7 +32,10 @@ public:
     kP_ = this->declare_parameter<float>("kP", 0.2);
     kI_ = this->declare_parameter<float>("kI", 0.2);
     kD_ = this->declare_parameter<float>("kD", 0.2);
+    horizon_ = this->declare_parameter<float>("horizon", 1.0);
+    dt_ = this->declare_parameter<float>("dt", 0.1);
     usingBugAlgorithm_ = this->declare_parameter<bool>("usingBugAlgorithm", true);
+    
   }
 
   void get_parameters(){
@@ -42,6 +45,8 @@ public:
     kP_ = this->get_parameter("kP").as_double();
     kI_ = this->get_parameter("kI").as_double();
     kD_ = this->get_parameter("kD").as_double();
+    horizon_ = this->get_parameter("horizon").as_double();
+    dt_ = this->get_parameter("dt").as_double();
     usingBugAlgorithm_ = this->get_parameter("usingBugAlgorithm").as_bool();
   }
 
@@ -49,11 +54,14 @@ public:
     get_parameters();
 
     if (controller_type_ == "pure_pursuit") {
+      RCLCPP_INFO(this->get_logger(), "Using Pure Pursuit Controller");
       controller_ = std::make_unique<puzzlebot_controllers::controllers::PurePursuitController>(linear_speed_, lookahead_distance_);
     } else if (controller_type_ == "pid") {
+      RCLCPP_INFO(this->get_logger(), "Using PID Controller");
       controller_ = std::make_unique<puzzlebot_controllers::controllers::PIDController>(linear_speed_, kP_, kD_, kI_);
-    // } else if (controller_type_ == "mpc") {
-      // controller_ = std::make_unique<puzzlebot_controllers::controllers::MPCController>(linear_speed_);
+    } else if (controller_type_ == "mpc") {
+      RCLCPP_INFO(this->get_logger(), "Using MPC Controller");
+      controller_ = std::make_unique<puzzlebot_controllers::controllers::MPCController>(linear_speed_, horizon_, dt_);
     } else {
       RCLCPP_ERROR(this->get_logger(), "Unknown controller type: %s", controller_type_.c_str());
       rclcpp::shutdown();
@@ -79,6 +87,8 @@ public:
     RCLCPP_INFO(this->get_logger(), "Waiting for planning service");
     while (!planner_client_->wait_for_service(2s));
     RCLCPP_INFO(this->get_logger(), "Planner server ready");
+
+
   }
 
 private:
@@ -217,6 +227,7 @@ private:
   double linear_speed_;
   double lookahead_distance_;
   double kP_, kD_, kI_;
+  double horizon_, dt_;
 };
 
 int main(int argc, char **argv) {
