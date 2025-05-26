@@ -5,6 +5,7 @@ from launch.substitutions import (
     LaunchConfiguration,
     PathJoinSubstitution,
 )
+from launch.conditions import IfCondition
 import launch_ros.actions
 import os
 
@@ -25,6 +26,12 @@ def generate_launch_description():
 
     # Declare launch arguments
     args = []
+    args.append(
+        launch.actions.DeclareLaunchArgument(
+            name="rviz", default_value="false",
+            description="Launch RViz?"
+        )
+    )
     args.append(
         launch.actions.DeclareLaunchArgument(
             name="model",
@@ -74,6 +81,7 @@ def generate_launch_description():
         name="rviz2",
         output="screen",
         arguments=["-d", LaunchConfiguration("rvizconfig")],
+        condition=IfCondition(LaunchConfiguration("rviz"))
     )
     
     differential_dk_node = launch_ros.actions.Node(

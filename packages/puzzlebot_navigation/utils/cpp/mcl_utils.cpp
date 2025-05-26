@@ -52,16 +52,15 @@ bool resample_particles(
         
         std::uniform_int_distribution<int> particle_index_distribution(0, num_particles - 1);
         std::normal_distribution<float> trans_noise_distribution(0, trans_noise);
-        std::normal_distribution<float> theta_noise_distribution(-theta_noise, theta_noise);
+        std::normal_distribution<float> theta_noise_distribution(0, theta_noise);
 
         // Add gaussian noise and write to resampled_particles using uniform distribution to select the particle
         for (int i = 0; i < num_particles; i++) {
-            std::size_t number = particle_index_distribution(gen);
-            std::vector<float>& dump_particle = particles_sampled[number];
+            std::vector<float>& dump_particle = particles_sampled[i];
             float x = dump_particle[0] + trans_noise_distribution(gen);
             float y = dump_particle[1] + trans_noise_distribution(gen);
             float theta = dump_particle[2] + theta_noise_distribution(gen);
-            
+        
             resampled_particles[i * num_dimensions + 0] = x;
             resampled_particles[i * num_dimensions + 1] = y;
             resampled_particles[i * num_dimensions + 2] = theta;
