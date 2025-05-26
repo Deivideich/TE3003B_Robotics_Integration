@@ -109,13 +109,13 @@ class KalmanNode(Node):
         try:
             now = self.get_clock().now()
             self.aruco_tf = self.tf_buffer.lookup_transform(
-                'map',  # target frame - map
-                f'aruco_{self.marker_id}',      # source frame - aruco
-                now)  # TODO
+                    'map',  # target frame - map
+                    f'aruco_{self.marker_id}',      # source frame - aruco
+                    now)  # TODO
 
             self.aruco_to_robot_tf = self.tf_buffer.lookup_transform(
-                f'aruco_{self.marker_id}',           # target frame - aruco id
-                'base_footprint',      # source frame - base footprint
+                'base_footprint',           # target frame - aruco id
+                f'aruco_{self.marker_id}',      # source frame - base footprint
                 now)  #TODO
             
 
