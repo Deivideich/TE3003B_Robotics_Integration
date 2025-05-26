@@ -1,20 +1,19 @@
 #!/usr/bin/env python3
 
 import rclpy
+from rclpy.node import Node
+from sensor_msgs.msg import Image, CompressedImage
+from std_msgs.msg import Int32
+from geometry_msgs.msg import PoseWithCovarianceStamped, PoseStamped, TransformStamped
+from tf2_ros import TransformBroadcaster, StaticTransformBroadcaster
 import cv2
 from cv_bridge import CvBridge
-from sensor_msgs.msg import Image, CompressedImage
-from rclpy.node import Node
 import numpy as np
 import os
 import importlib.resources
 import json
-from geometry_msgs.msg import PoseWithCovarianceStamped, PoseStamped
-from tf2_ros import TransformBroadcaster
-from geometry_msgs.msg import TransformStamped
 from scipy.spatial.transform import Rotation as R
-from tf2_ros import TransformBroadcaster, StaticTransformBroadcaster
-from geometry_msgs.msg import TransformStamped
+
 
 
 from puzzlebot_vision.aruco_detector.ArucoDetector import ArucoDetector
@@ -47,6 +46,12 @@ class ArucoDetectorNode(Node):
         self.aruco_pose_publisher = self.create_publisher(
             PoseStamped,
             "/aruco_pose",
+            10
+        )
+
+        self.aruco_id_publisher = self.create_publisher(
+            Int32,
+            "/aruco_id",
             10
         )
 
@@ -153,6 +158,7 @@ class ArucoDetectorNode(Node):
             t.transform.rotation.w = q[3]
 
             self.tf_broadcaster.sendTransform(t)
+            self.aruco_id_publisher.publish(Int32(data=marker_id))
         
             # Publish pose for AMCL if the Euclidean distance is below the threshold
             if np.linalg.norm(det["tvec"]) < ARUCO_THRESHOLD:

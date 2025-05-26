@@ -2,7 +2,7 @@ import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import JointState
 from builtin_interfaces.msg import Time
-from std_msgs.msg import Header
+from std_msgs.msg import Header, Int32
 from geometry_msgs.msg import PoseStamped
 import math
 import numpy as np
@@ -20,7 +20,7 @@ class KalmanNode(Node):
 
         # SUBSCRIBERS
         self.create_subscription(JointState, '/joint_states', self.joint_state_callback, 10)
-        #self.create_subscription() #Subscriber del ARUCO id
+        self.create_subscription(Int32, '/aruco_id', self.aruco_callback, 10) #Subscriber del ARUCO id
         # Aqui tiene que ir el subscriber que me de la posicion de los marcadores
 
         #PUBLISHERS
@@ -89,7 +89,7 @@ class KalmanNode(Node):
         self.w = self.wheel_radius * (omega_r - omega_l) / self.wheel_base
 
         self.Kalmann_filter()
-
+    
     def calcMiuHat(self):
 
         self.uHat[0] += self.dt * self.v * math.cos(self.theta_prev)
@@ -233,7 +233,7 @@ class KalmanNode(Node):
         id = msg.status
         if(id in self.valid_id):
             self.landmark_status = True
-            self.aruco_id = id
+            self.marker_id = id
         else:
             self.landmark_status = False
 
