@@ -107,17 +107,16 @@ class KalmanNode(Node):
 
     def obtain_tfs(self):
         try:
+            now = self.get_clock().now()
             self.aruco_tf = self.tf_buffer.lookup_transform(
-                    f'aruco_{self.marker_id}',           # target frame - aruco id
-                    'map',      # source frame - map
-                    self.get_clock().now(),
-                    timeout=rclpy.duration.Duration(seconds=0.005))  # time = 0 means "latest available"
+                'map',  # target frame - map
+                f'aruco_{self.marker_id}',      # source frame - aruco
+                now)  # TODO
 
             self.aruco_to_robot_tf = self.tf_buffer.lookup_transform(
                 f'aruco_{self.marker_id}',           # target frame - aruco id
                 'base_footprint',      # source frame - base footprint
-                self.get_clock().now(),
-                timeout=rclpy.duration.Duration(seconds=0.005))  # time = 0 means "latest available"
+                now)  #TODO
             
 
 
