@@ -28,7 +28,6 @@ class ArucoDetectorNode(Node):
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
         self.tf_broadcaster = TransformBroadcaster(self)
-        self.tf_base = None
         self.loaded_saved_poses = []
 
         self.subscription = self.create_subscription(
@@ -38,14 +37,6 @@ class ArucoDetectorNode(Node):
             10
         )
 
-        self.initial_pose_sub = self.create_subscription(
-            PoseWithCovarianceStamped,
-            "/initialpose",
-            self.handle_initial_pose,
-            10
-        )
-
-        self.timer = self.create_timer(0.1, self.handle_timer)
         self.saved_tf_timer = self.create_timer(0.01, self.broadcast_saved_tfs)
 
         self.file_path = os.path.join(
@@ -58,7 +49,6 @@ class ArucoDetectorNode(Node):
         dir_path = os.path.dirname(self.file_path)
         if not os.path.exists(dir_path):
             os.makedirs(dir_path, exist_ok=True)
-
 
         self.camera_frame = "camera_base_link"
         self.map_frame = "map"
@@ -74,26 +64,6 @@ class ArucoDetectorNode(Node):
             self.process_frame(frame, msg.header.stamp)
         except Exception as e:
             self.get_logger().error(f"Image processing failed: {e}")
-
-    def handle_initial_pose(self, msg: PoseWithCovarianceStamped):
-        t = TransformStamped()
-        t.header.stamp = self.get_clock().now().to_msg()
-        t.header.frame_id = "map"
-        t.child_frame_id = "odom"
-
-        t.transform.translation.x = msg.pose.pose.position.x
-        t.transform.translation.y = msg.pose.pose.position.y
-        t.transform.translation.z = msg.pose.pose.position.z
-        t.transform.rotation = msg.pose.pose.orientation
-
-        self.tf_base = t
-        self.get_logger().info("📡 Published map → odom transform based on initialpose.")
-
-    def handle_timer(self):
-        if self.tf_base is None:
-            return
-        self.tf_base.header.stamp = self.get_clock().now().to_msg()
-        self.tf_broadcaster.sendTransform(self.tf_base)
 
     def broadcast_saved_tfs(self):
         if len(self.loaded_saved_poses) <= 0:
@@ -185,16 +155,6 @@ class ArucoDetectorNode(Node):
         pose.pose.orientation.w = q[3]
 
         return pose
-
-    def broadcast_tf(self, pose_stamped: PoseStamped, marker_id: int):
-        t = TransformStamped()
-        t.header = pose_stamped.header
-        t.child_frame_id = f"aruco_{marker_id}"
-        t.transform.translation.x = pose_stamped.pose.position.x
-        t.transform.translation.y = pose_stamped.pose.position.y
-        t.transform.translation.z = pose_stamped.pose.position.z
-        t.transform.rotation = pose_stamped.pose.orientation
-        self.tf_broadcaster.sendTransform(t)
 
     def save_pose_to_json(self, marker_id: int, pose_stamped: PoseStamped, filepath="aruco_poses.json"):
         pose_data = {

@@ -14,6 +14,7 @@
   <depend>std_msgs</depend>¿
 
   <exec_depend>puzzlebot_interfaces</exec_depend>
+  <exec_depend>puzzlebot_navigation</exec_depend>
   <exec_depend>sensor_msgs</exec_depend>
 
   <test_depend>ament_lint_auto</test_depend>
