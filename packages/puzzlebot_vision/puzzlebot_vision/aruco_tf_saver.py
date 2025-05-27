@@ -147,7 +147,11 @@ class ArucoDetectorNode(Node):
         pose.pose.position.y = T[1, 3]
         pose.pose.position.z = T[2, 3]
 
-        rot = R.from_matrix(T[:3, :3])
+        try:
+            rot = R.from_matrix(T[:3, :3])  # For scipy >= 1.4.0
+        except AttributeError:
+            rot = R.from_dcm(T[:3, :3])     # For scipy < 1.4.0
+            
         q = rot.as_quat()  # [x, y, z, w]
         pose.pose.orientation.x = q[0]
         pose.pose.orientation.y = q[1]
