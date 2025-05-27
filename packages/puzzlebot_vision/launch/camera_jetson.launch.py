@@ -14,8 +14,8 @@ def generate_launch_description():
         arguments=[],
         parameters=[
         {"resource": "csi://0"},
-        {"width": 1280},
-        {"height": 720},
+        {"width": 200},
+        {"height": 100},
         {"codec": "unknown"},
         {"loop": 0},
         {"latency": 2000}
@@ -34,7 +34,18 @@ def generate_launch_description():
         ],
         output='screen'
     )
+
+    camera_compressed = Node(
+        package='puzzlebot_vision',
+        executable='camera_compressed_pub.py',
+        name='camera_compressed_pub',
+        parameters=[
+            {"width": 200},
+            {"height": 100}
+        ],
+        output='screen'
+    )
         
-    ld = [camera, camera_info]
+    ld = [camera, camera_info, camera_compressed]
 
     return LaunchDescription(ld)
