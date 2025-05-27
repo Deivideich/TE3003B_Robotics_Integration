@@ -2,6 +2,7 @@
 import math
 import numpy as np
 import ctypes
+from time import time
 
 import rclpy
 from rclpy.node import Node
@@ -20,7 +21,8 @@ cpp_mcl = os.path.join(package_prefix, 'lib', 'puzzlebot_navigation', 'libmcl_ut
 
 ARGS = {
     'useClustering': False,
-    'numParticles': 1000,
+    'numParticles': 300,
+    'scanStep' : 5,
     'minClusterDistance': 0.5,
     'clusterEps': 0.5,
     'clusterMinSamples': 0.05,
@@ -37,6 +39,7 @@ class MCLNode(Node):
         
         self.declare_parameter('useClustering', ARGS['useClustering'])
         self.declare_parameter('numParticles', ARGS['numParticles'])
+        self.declare_parameter('scanStep', ARGS['scanStep'])
         self.declare_parameter('minClusterDistance', ARGS['minClusterDistance'])
         self.declare_parameter('clusterEps', ARGS['clusterEps'])
         self.declare_parameter('clusterMinSamples', ARGS['clusterMinSamples'])
@@ -95,6 +98,7 @@ class MCLNode(Node):
     def initialize_params(self):
         self.useClustering = self.get_parameter('useClustering').get_parameter_value().bool_value
         self.num_particles = self.get_parameter('numParticles').get_parameter_value().integer_value
+        self.scan_step = self.get_parameter('scanStep').get_parameter_value().integer_value
         self.num_dimensions = 3
         self.min_cluster_distance = self.get_parameter('minClusterDistance').get_parameter_value().double_value
         self.cluster_eps = self.get_parameter('clusterEps').get_parameter_value().double_value
@@ -189,7 +193,7 @@ class MCLNode(Node):
             theta = np.random.uniform(-np.pi, np.pi)
             self.particles.append((x, y, theta))
 
-        self.publish_particles()
+        # self.publish_particles()
     
     
     def publish_particles(self):
@@ -227,8 +231,9 @@ class MCLNode(Node):
 
         scan_msg = msg
         scan_msg.header.stamp = self.get_clock().now().to_msg()
-        
-        # Publish the scan message
+        scan_msg.angle_increment = scan_msg.angle_increment * self.scan_step
+        scan_msg.ranges = scan_msg.ranges[::self.scan_step]
+        scan_msg.intensities = scan_msg.intensities[::self.scan_step] if scan_msg.intensities else []
         self.scan_pub.publish(scan_msg)
 
     def odom_callback(self, msg):
@@ -268,6 +273,7 @@ class MCLNode(Node):
                 ctypes.POINTER(ctypes.c_float),    # scan_ranges
                 ctypes.c_int,                      # scan_size
                 ctypes.c_float,                    # max_range
+                ctypes.c_int,                      # scan_step
                 ctypes.c_int,                      # num_particles
                 ctypes.c_int,                      # num_dimensions
                 ctypes.POINTER(ctypes.c_float),    # particles
@@ -297,6 +303,7 @@ class MCLNode(Node):
                 sranges_ctypes,
                 len(scan_angles),
                 max_range,
+                self.scan_step,
                 self.num_particles,
                 self.num_dimensions,
                 particles_ctypes,
@@ -513,6 +520,7 @@ class MCLNode(Node):
         if len(self.delta_motion) <= 0:
             return
         
+        self.prev_time = time()        
         diffDistance = math.sqrt(self.delta_motion[0]**2 + self.delta_motion[1]**2)
         diffAngle = abs(self.delta_motion[2])*180.0/3.141592
 
@@ -532,9 +540,11 @@ class MCLNode(Node):
        
         
 
-        self.publish_particles()
+        # self.publish_particles()
         self.broadcast_transform()
         self.publish_estimated_pose()   
+
+        self.get_logger().info(f"Elapsed time: {time() - self.prev_time}")
 
 
 def main(args=None):

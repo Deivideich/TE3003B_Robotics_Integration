@@ -12,7 +12,8 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 
 mcl_args = {
     'useClustering': False,
-    'numParticles': 1000,
+    'numParticles': 300,
+    'scanStep' : 5,
     'minClusterDistance': 0.5,
     'clusterEps': 0.5,
     'clusterMinSamples': 0.05,
