@@ -12,9 +12,9 @@ class ArucoDetector:
 
         self._load_calibration()
         self._init_detector()
+        self.object_points = self._get_marker_object_points()
 
     def _load_calibration(self):
-        # Get the path to the calibration file
         script_dir = os.path.dirname(os.path.abspath(__file__))
         calib_path = os.path.abspath(os.path.join(script_dir, "../resources/calibration.npz"))
 
@@ -33,24 +33,39 @@ class ArucoDetector:
         parameters = cv2.aruco.DetectorParameters()
         self.detector = cv2.aruco.ArucoDetector(aruco_dict, parameters)
 
+    def _get_marker_object_points(self):
+        """Return 3D object points of the marker in its own coordinate system."""
+        half_len = self.marker_length / 2.0
+        return np.array([
+            [-half_len,  half_len, 0],
+            [ half_len,  half_len, 0],
+            [ half_len, -half_len, 0],
+            [-half_len, -half_len, 0]
+        ], dtype=np.float32)
+
     def detect(self, frame):
-        """Detect markers in a BGR image frame. Returns detection results."""
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         corners, ids, _ = self.detector.detectMarkers(gray)
 
         results = []
 
         if ids is not None:
-            rvecs, tvecs, _ = cv2.aruco.estimatePoseSingleMarkers(
-                corners, self.marker_length, self.camera_matrix, self.dist_coeffs)
-
             for i in range(len(ids)):
-                result = {
-                    'id': int(ids[i][0]),
-                    'corner': corners[i],
-                    'rvec': rvecs[i][0],
-                    'tvec': tvecs[i][0]
-                }
-                results.append(result)
+                corner = corners[i]
+                success, rvec, tvec = cv2.solvePnP(
+                    objectPoints=self.object_points,
+                    imagePoints=corner,
+                    cameraMatrix=self.camera_matrix,
+                    distCoeffs=self.dist_coeffs
+                )
+
+                if success:
+                    result = {
+                        'id': int(ids[i][0]),
+                        'corner': corner,
+                        'rvec': rvec.flatten(),
+                        'tvec': tvec.flatten()
+                    }
+                    results.append(result)
 
         return results
