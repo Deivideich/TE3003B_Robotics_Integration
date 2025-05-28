@@ -3,7 +3,8 @@ from rclpy.node import Node
 from sensor_msgs.msg import JointState
 from builtin_interfaces.msg import Time
 from std_msgs.msg import Header, Int32
-from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped
+from nav_msgs.msg import Odometry
 import math
 import numpy as np
 import cv2
@@ -24,7 +25,8 @@ class KalmanNode(Node):
         # Aqui tiene que ir el subscriber que me de la posicion de los marcadores
 
         #PUBLISHERS
-        self.pub_pos = self.create_publisher(PoseStamped, '/estimated_pose', 10)
+        # self.pub_pos = self.create_publisher(PoseStamped, '/estimated_pose', 10)
+        self.pub_pos = self.create_publisher(PoseWithCovarianceStamped, '/estimated_pose', 10)
 
         self.wheel_radius = 0.05
         self.wheel_base = 0.19 #0.168?
@@ -45,7 +47,11 @@ class KalmanNode(Node):
 
         self.Sigma_cov = np.zeros((3,3))
         self.Sigma_hat = np.zeros((3,3))
-        self.error_Q = np.diag([0.1, 0.1, 0.01]) # Process noise covariance matrix
+        
+        self.error_Q = np.zeros((3,3)) # Process noise covariance matrix
+        self.K_R = 0.30406416057210744
+        self.K_L = 0.38899148975615183
+
         self.zHat = np.zeros((2, 1))
 
         self.valid_id = [0, 1, 2, 3, 4, 5, 6, 7] # Valid ARUCO IDs
@@ -57,6 +63,9 @@ class KalmanNode(Node):
         self.R_error = np.array([[0.1, 0],
                                  [0, 0.02]])
         
+        self.omega_l = 0.0
+        self.omega_r = 0.0
+        
         self.identity = np.eye(3) # Identity matrix
         
         self.Kalmann_gain = np.zeros((3, 2)) 
@@ -67,7 +76,22 @@ class KalmanNode(Node):
         self.tf_listener = TransformListener(self.tf_buffer, self)
         time.sleep(1)
 
-        
+    def obtain_Q(self):
+        delta_w = np.zeros((3,2))
+        delta_w[0,0] = np.cos(self.theta_prev)
+        delta_w[0,1] = np.cos(self.theta_prev)
+        delta_w[1,0] = np.sin(self.theta_prev)
+        delta_w[1,1] = np.sin(self.theta_prev)
+        delta_w[2,0] = 2 / self.wheel_base
+        delta_w[2,1] = -2 / self.wheel_base
+
+        delta_w = 0.5 * self.wheel_radius * self.dt * delta_w
+
+        sigma_ = np.zeros((2,2))
+        sigma_[0,0] = self.K_R * abs(self.omega_r)
+        sigma_[1,1] = self.K_L * abs(self.omega_l)
+
+        self.error_Q = delta_w @ sigma_ @ delta_w.T
 
     def joint_state_callback(self, msg):
         # Extract wheel velocities from JointState message
@@ -75,8 +99,8 @@ class KalmanNode(Node):
             self.get_logger().warn("Received less than 2 wheel velocities!")
             return
 
-        omega_l = msg.velocity[0]
-        omega_r = msg.velocity[1]
+        self.omega_l = msg.velocity[0]
+        self.omega_r = msg.velocity[1]
 
         # Update dt
         current_time = self.get_clock().now().seconds_nanoseconds()
@@ -85,8 +109,8 @@ class KalmanNode(Node):
         self.last_time = now
 
         # Direct kinematics
-        self.v = self.wheel_radius * (omega_r + omega_l) / 2
-        self.w = self.wheel_radius * (omega_r - omega_l) / self.wheel_base
+        self.v = self.wheel_radius * (self.omega_r + self.omega_l) / 2
+        self.w = self.wheel_radius * (self.omega_r - self.omega_l) / self.wheel_base
 
         self.Kalmann_filter()
     
@@ -114,8 +138,8 @@ class KalmanNode(Node):
                     now)  # TODO
 
             self.aruco_to_robot_tf = self.tf_buffer.lookup_transform(
-                'base_footprint',           # target frame - aruco id
-                f'aruco_{self.marker_id}',      # source frame - base footprint
+                'base_footprint',           # target frame - base footprint
+                f'aruco_{self.marker_id}',      # source frame - aruco
                 now)  #TODO
             
 
@@ -138,7 +162,9 @@ class KalmanNode(Node):
         diff_y = self.m_y - self.uHat[1]
 
         self.zHat[0] = np.sqrt( (diff_x)**2 + (diff_y)**2 )
-        self.zHat[1] = math.atan2(diff_y, diff_x) - self.uHat[2]
+        self.zHat[1] = math.atan2(diff_y, diff_x) - self.uHat[2] #TODO
+        self.zHat[1] = (self.zHat[1] + math.pi) % (2 * math.pi) - math.pi #Normalizar angulo
+
 
 
         # noise = np.random.normal(0, 0.1, size=self.zHat.shape)
@@ -179,9 +205,7 @@ class KalmanNode(Node):
             return 0.0
 
     def calc_miu(self):
-        z_vec = np.ones((2, 1)) # This needs to be the SinglePoseMarker with Transforms. I need euclidean distance and angle from base_footprint I think?
-
-        
+        z_vec = np.zeros((2, 1)) # This needs to be the SinglePoseMarker with Transforms. I need euclidean distance and angle from base_footprint I think?
 
         x = self.aruco_to_robot_tf.transform.position.x
         y = self.aruco_to_robot_tf.transform.position.y
@@ -205,7 +229,7 @@ class KalmanNode(Node):
         
 
     def calc_sigma(self):
-        self.Sigma_cov = (np.ones((3,3)) - self.Kalmann_gain @ self.gradient_G) @ self.Sigma_hat
+        self.Sigma_cov = (self.identity - self.Kalmann_gain @ self.gradient_G) @ self.Sigma_hat
 
     def set_previous(self):
         self.uHat[0] = self.uPose[0]
@@ -226,6 +250,19 @@ class KalmanNode(Node):
         msg.pose.orientation.z = q[2]
         msg.pose.orientation.w = q[3]
 
+        ros_cov = np.zeros(36)
+        ros_cov[0] = self.Sigma_cov[0, 0] # x,x
+        ros_cov[1] = self.Sigma_cov[0, 1] # x,y
+        ros_cov[5] = self.Sigma_cov[0, 2] # x,theta
+        ros_cov[6] = self.Sigma_cov[1, 0] # y,x
+        ros_cov[7] = self.Sigma_cov[1, 1] # y,y
+        ros_cov[11] = self.Sigma_cov[1, 2] # y, theta
+        ros_cov[30] = self.Sigma_cov[2, 0] # theta,x
+        ros_cov[31] = self.Sigma_cov[2, 1] # theta,y
+        ros_cov[35] = self.Sigma_cov[2, 2] #theta,theta
+
+        msg.pose.covariance = ros_cov
+
         self.pub_pos.publish(msg) 
         
         
@@ -238,6 +275,8 @@ class KalmanNode(Node):
             self.landmark_status = False
 
     def Kalmann_filter(self):
+
+        self.obtain_Q()
         
         self.calcMiuHat()
         self.calc_Gradient_h()
