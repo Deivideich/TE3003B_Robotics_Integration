@@ -101,6 +101,8 @@
       </inertial>
     </link>
 
+    <link name="${prefix}camera_base_link"/>
+
     <link name="${prefix}laser_frame"/>
 
     <link name="laser"/>
@@ -131,6 +133,13 @@
       <child link="${prefix}caster_link"/>
       <origin xyz="-0.075 0 -0.0425" rpy="0 0 0"/>
     </joint>
+
+    <joint name="${prefix}camera_base_joint" type="fixed">
+        <parent link="${prefix}base_link"/>
+        <child link="${prefix}camera_base_link"/>
+        <origin xyz="0.112 0 0.065" rpy="-1.57 0 -1.57"/>
+    </joint>
+
 
     <joint name="${prefix}laser_joint" type="fixed">
       <parent link="${prefix}base_link"/>
