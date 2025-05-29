@@ -99,12 +99,12 @@ class QRDetectorNode(Node):
             pose_stamped_base = PoseStamped()
             try:
                 transform = self.tf_buffer.lookup_transform(
-                    "base_link",  # target
+                    "map",  # target
                     "camera_base_link",  # source
                     rclpy.time.Time(),
                     rclpy.duration.Duration(seconds=1.0)
                 )
-                pose_stamped_base.header.frame_id = "base_link"
+                pose_stamped_base.header.frame_id = "map"
                 pose_stamped_base.header.stamp = self.get_clock().now().to_msg()
                 pose_stamped_base.pose = tf2_geometry_msgs.do_transform_pose(pose_cam, transform)
             except (LookupException, ExtrapolationException) as e:

@@ -165,15 +165,15 @@ def generate_launch_description():
             # parameters=[{"map_yaml_file" : LaunchConfiguration("map_file")}],
         ),
         
-        # Node(
-        #     package="puzzlebot_navigation",
-        #     executable="monte_carlo_localisation.py",
-        #     name="monte_carlo_localisation",
-        #     output="screen",
-        #     parameters=[
-        #         {key: LaunchConfiguration(key) for key in mcl_args.keys()}
-        #     ],
-        # ),
+        Node(
+            package="puzzlebot_navigation",
+            executable="monte_carlo_localisation.py",
+            name="monte_carlo_localisation",
+            output="screen",
+            parameters=[
+                {key: LaunchConfiguration(key) for key in mcl_args.keys()}
+            ],
+        ),
 
         Node(
             package="puzzlebot_navigation",
