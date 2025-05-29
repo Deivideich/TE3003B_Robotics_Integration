@@ -31,6 +31,7 @@ ARGS = {
     'minAngle': 5.0,
     'repropagateCountNeeded': 1,
     'HZ' : 20.0,
+    'sim': False,
 }
 class MCLNode(Node):
     def __init__(self):
@@ -48,6 +49,7 @@ class MCLNode(Node):
         self.declare_parameter('minAngle', ARGS['minAngle'])
         self.declare_parameter('repropagateCountNeeded', ARGS['repropagateCountNeeded'])
         self.declare_parameter('HZ', ARGS['HZ'])
+        self.declare_parameter('sim', ARGS['sim'])
 
         self.initialize_params()
 
@@ -83,10 +85,12 @@ class MCLNode(Node):
         self.particles_pub = self.create_publisher(PoseArray, '/particle_cloud', 10)
         
         #### SUBSCRIBERS ####
-        self.create_subscription(OccupancyGrid, '/map', self.map_callback, 10)
-        self.create_subscription(Odometry, '/odom', self.odom_callback, 10)
-        self.create_subscription(LaserScan, '/scan', self.scan_callback, 10)
-        self.create_subscription(PoseWithCovarianceStamped, '/initialpose', self.pose_overwrite, 10)
+        qos = rclpy.qos.QoSProfile(depth=10)
+        qos.reliability = rclpy.qos.QoSReliabilityPolicy.BEST_EFFORT
+        self.create_subscription(OccupancyGrid, '/map', self.map_callback, qos)
+        self.create_subscription(Odometry, '/odom', self.odom_callback, qos)
+        self.create_subscription(LaserScan, '/scan', self.scan_callback, qos)
+        self.create_subscription(PoseWithCovarianceStamped, '/initialpose', self.pose_overwrite, qos)
 
         #### TIMER ####
         self.timer = self.create_timer(0.05, self.mcl_loop)
@@ -107,7 +111,8 @@ class MCLNode(Node):
         self.min_distance = self.get_parameter('minDistance').get_parameter_value().double_value
         self.min_angle = math.radians(self.get_parameter('minAngle').get_parameter_value().double_value)
         self.repropagateCountNeeded = int(self.get_parameter('repropagateCountNeeded').get_parameter_value().integer_value)
-
+        self.sim = self.get_parameter('sim').get_parameter_value().bool_value
+        
     def publish_estimated_pose(self):
         x, y, theta = self.estimate_pose()
 
@@ -226,15 +231,22 @@ class MCLNode(Node):
             return (0.0, 0.0, 0.0, 1.0)
     
     def scan_callback(self, msg):
-        self.scan = msg
-        self.scan_received = True
-
         scan_msg = msg
-        scan_msg.header.stamp = self.get_clock().now().to_msg()
+        # scan_msg.header.stamp = self.get_clock().now().to_msg()
         scan_msg.angle_increment = scan_msg.angle_increment * self.scan_step
         scan_msg.ranges = scan_msg.ranges[::self.scan_step]
         scan_msg.intensities = scan_msg.intensities[::self.scan_step] if scan_msg.intensities else []
         self.scan_pub.publish(scan_msg)
+        
+        self.transform_laser_scan(msg)
+        self.scan_received = True
+        
+    # transform from msg frame to "laser_frame"
+    def transform_laser_scan(self, scan_msg):
+        self.scan = scan_msg
+        if not self.sim:
+            self.scan.angle_min = scan_msg.angle_min + 3.14
+            self.scan.angle_max = scan_msg.angle_max + 3.14
 
     def odom_callback(self, msg):
         self.odom = msg
@@ -244,6 +256,7 @@ class MCLNode(Node):
             return
         # Save delta odom
         self.delta_motion = self.compute_odometry_delta(self.last_odom, self.odom)
+        self.last_odom = self.odom
 
 
     def sensor_update(self):
@@ -341,6 +354,33 @@ class MCLNode(Node):
 
         return dx_local, dy_local, dtheta
 
+    def angle_diff(self, a, b):
+        diff = a - b
+        return (diff + np.pi) % (2 * np.pi) - np.pi
+
+    def motion_update(self, delta):
+        dx, dy, dtheta = delta
+
+        motion_noise = {
+            "x": 0.01,
+            "y": 0.01,
+            "theta": 0.01
+        }
+
+        new_particles = []
+        for x, y, theta in self.particles:
+            # Transform robot-frame delta to world frame using particle's heading
+            dx_world = dx * math.cos(theta) - dy * math.sin(theta)
+            dy_world = dx * math.sin(theta) + dy * math.cos(theta)
+
+            x_new = x + dx_world + np.random.normal(0, motion_noise["x"])
+            y_new = y + dy_world + np.random.normal(0, motion_noise["y"])
+            theta_new = theta + dtheta + np.random.normal(0, motion_noise["theta"])
+            theta_new =  (theta_new + math.pi) % (2 * math.pi) - math.pi 
+
+            new_particles.append((x_new, y_new, theta_new))
+
+
     
     def angle_diff(self, a, b):
         diff = a - b
@@ -425,31 +465,6 @@ class MCLNode(Node):
             self.get_logger().warn("C++ resampling failed. Falling back to Python version.")
 
 
-    def motion_update(self, delta):
-        dx, dy, dtheta = delta
-
-        motion_noise = {
-            "x": 0.01,
-            "y": 0.01,
-            "theta": 0.01
-        }
-
-        new_particles = []
-        for x, y, theta in self.particles:
-            # Transform robot-frame delta to world frame using particle's heading
-            dx_world = dx * math.cos(theta) - dy * math.sin(theta)
-            dy_world = dx * math.sin(theta) + dy * math.cos(theta)
-
-            x_new = x + dx_world + np.random.normal(0, motion_noise["x"])
-            y_new = y + dy_world + np.random.normal(0, motion_noise["y"])
-            theta_new = theta + dtheta + np.random.normal(0, motion_noise["theta"])
-            theta_new =  (theta_new + math.pi) % (2 * math.pi) - math.pi 
-
-            new_particles.append((x_new, y_new, theta_new))
-
-        self.particles = new_particles
-
-
     def broadcast_transform(self):
         try:
             x, y, theta = self.estimate_pose()
@@ -522,7 +537,7 @@ class MCLNode(Node):
 
         if diffDistance > self.min_distance or diffAngle > self.min_angle:
             self.motion_update(self.delta_motion)       
-            self.last_odom = self.odom
+            
 
             self.sensor_update()
             
@@ -537,7 +552,7 @@ class MCLNode(Node):
         self.broadcast_transform()
         self.publish_estimated_pose()   
 
-        self.get_logger().info(f"Elapsed time: {time() - self.prev_time}")
+        # self.get_logger().info(f"Elapsed time: {time() - self.prev_time}")
 
 
 def main(args=None):
