@@ -7,10 +7,13 @@ from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 from launch.conditions import IfCondition
 from launch_ros.parameter_descriptions import ParameterValue
+from launch.actions import IncludeLaunchDescription
+from launch.launch_description_sources import PythonLaunchDescriptionSource
 
 mcl_args = {
     'useClustering': False,
-    'numParticles': 1000,
+    'numParticles': 300,
+    'scanStep' : 5,
     'minClusterDistance': 0.5,
     'clusterEps': 0.5,
     'clusterMinSamples': 0.05,
@@ -32,7 +35,7 @@ def generate_launch_description():
     pkg_urdf_share = FindPackageShare(pkg_urdf_name).find(pkg_urdf_name)
     default_model_path = os.path.join(pkg_urdf_share, "urdf", "robot.xacro")
     default_rviz_config_path = os.path.join(pkg_nav_share, "rviz", "mcl.rviz")
-
+    gazebo_spawner_launch_path = os.path.join(pkg__kinematics_share, "launch", "puzzlebot_gazebo_spawner.launch.py")
     # Add the path for the Gazebo model (adjust based on where the saved model files are)
     gazebo_model_path = os.path.join(pkg_urdf_share, "models", "mcl_world")
 
@@ -66,75 +69,54 @@ def generate_launch_description():
             name="use_gazebo_odom", default_value="false",
             description="Whether to include Gazebo odometry"
         ),
+         DeclareLaunchArgument(
+            name="gazebo_model_file", default_value=os.path.join(pkg_urdf_share, "models", "mcl_world", "model.sdf"),
+            description="Path to the Gazebo model file"
+        ),
+        DeclareLaunchArgument(
+            name="spawn_entity_name", default_value="puzzlebot",
+            description="Name for the entity in Gazebo"
+        ),
         DeclareLaunchArgument(
             name="use_mcl_clustering", default_value="false",
             description="Whether to use clustering in MCL algorithm"
         ),
-
-        # Launch Gazebo
-        IncludeLaunchDescription(
-            PythonLaunchDescriptionSource([
-                PathJoinSubstitution([
-                    FindPackageShare("gazebo_ros"),
-                    "launch", "gazebo.launch.py"
-                ])
-            ])
-        ),
     
-        # State publisher
-        Node(
-            package="robot_state_publisher",
-            executable="robot_state_publisher",
-            name="robot_state_publisher",
-            parameters=[{
-                "robot_description": ParameterValue(
-                    Command([
-                        FindExecutable(name="xacro"), " ",
-                        LaunchConfiguration("model"), " ",
-                        "prefix:=", LaunchConfiguration("prefix"), " ",
-                        "use_gazebo_controllers:=", LaunchConfiguration("use_gazebo_controllers"),
-                        " ",
-                        "use_gazebo_odom:=", LaunchConfiguration("use_gazebo_odom"),
-                        " ",
-                    ]),
-                    value_type=str
-                )
-            }],
-            output="screen"
+        # # State publisher
+        # Node(
+        #     package="robot_state_publisher",
+        #     executable="robot_state_publisher",
+        #     name="robot_state_publisher",
+        #     parameters=[{
+        #         "robot_description": ParameterValue(
+        #             Command([
+        #                 FindExecutable(name="xacro"), " ",
+        #                 LaunchConfiguration("model"), " ",
+        #                 "prefix:=", LaunchConfiguration("prefix"), " ",
+        #                 "use_gazebo_controllers:=", LaunchConfiguration("use_gazebo_controllers"),
+        #                 " ",
+        #                 "use_gazebo_odom:=", LaunchConfiguration("use_gazebo_odom"),
+        #                 " ",
+        #             ]),
+        #             value_type=str
+        #         )
+        #     }],
+        #     output="screen"
+        # ),
+
+        # Include external launch file
+        # Include the Gazebo spawner launch file unconditionally with arguments
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(gazebo_spawner_launch_path),
+            launch_arguments={
+                "model": LaunchConfiguration("model"),  
+                "prefix": "",
+                "use_gazebo_controllers": "true",
+                "gazebo_model_file": LaunchConfiguration("gazebo_model_file"),
+                "spawn_entity_name": LaunchConfiguration("spawn_entity_name"),
+            }.items()
         ),
 
-        TimerAction(
-            period=3.0,
-            actions=[
-                Node(
-                    package="gazebo_ros",
-                    executable="spawn_entity.py",
-                    arguments=[
-                        "-topic", "/robot_description",
-                        "-entity", "puzzlebot",
-                        "-x", "0.0",  # X position
-                        "-y", "0.0",  # Y position
-                        "-z", "0.2",  # Z position
-                        "-R", "0",    # Roll
-                        "-P", "0",    # Pitch
-                        "-Y", "0"     # Yaw
-                    ],
-                    output="screen"
-                )
-            ]
-        ),
-
-        # Spawn Gazebo model (wall model)
-        Node(
-            package="gazebo_ros",
-            executable="spawn_entity.py",  # Using spawn_entity.py instead of spawn_model.py
-            arguments=[
-                "-file", os.path.join(gazebo_model_path, "model.sdf"),  # Replace with model.sdf path
-                "-entity", "wall_model",  # Correct entity name here
-                "-robot_namespace", "wall"
-            ],
-            output="screen"
-        ),
 
         # Optional RViz launch
         Node(

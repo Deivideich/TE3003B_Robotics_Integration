@@ -9,3 +9,5 @@ install/
 *.pt
 *.pth
 *events.out.tf*
+*.zip
+logged_data/

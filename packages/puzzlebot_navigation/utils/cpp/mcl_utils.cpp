@@ -79,7 +79,7 @@ bool resample_particles(
 // the weight of the particle is calculated to finally normalize these weights
 bool weight_particles(
     int* map_array, float* map_origin, int* map_shape, float map_resolution, 
-    float* scan_angles, float* scan_ranges, int scan_size, float max_range,
+    float* scan_angles, float* scan_ranges, int scan_size, float max_range, int scan_step,
     int num_particles, int num_dimensions, float* particles, 
     float* max_particle, float* weights){
     try{
@@ -97,7 +97,7 @@ bool weight_particles(
             float particle_weight = 0.0;
             
             // For each particle calculate the weight based on the laser scan hits and map occupancy grid
-            for (size_t j = 0; j < scan_size; j++){
+            for (size_t j = 0; j < scan_size; j+=scan_step){
                 float angle = scan_angles[j];
                 float range = scan_ranges[j];
 

@@ -10,15 +10,22 @@
 #include "nav_msgs/msg/path.hpp"
 #include "nav_msgs/msg/occupancy_grid.hpp"
 
-float ROBOT_RADIUS = 0.3; // Robot radius in meters
-
 class OMPLPlannerServer : public rclcpp::Node {
 public:
     OMPLPlannerServer() : Node("ompl_planner_server") {
         RCLCPP_INFO(this->get_logger(), "Initializing OMPL Planner Server...");
-        planner_ = std::make_shared<puzzlebot_planning::planners::OMPLPlanner>(ROBOT_RADIUS, 20);
-        RCLCPP_INFO(this->get_logger(), "OMPL Planner initialized with robot radius: %.2f m, Occupancy threshold: %d",
-                    ROBOT_RADIUS, 20);
+        
+        // Declare and get robot_radius parameter
+        this->declare_parameter<double>("robot_radius", 0.1);
+        robot_radius_ = this->get_parameter("robot_radius").as_double();
+        
+        // Declare and get turning_radius parameter
+        this->declare_parameter<double>("turning_radius", 30);
+        turning_radius_ = this->get_parameter("turning_radius").as_double();
+        
+        planner_ = std::make_shared<puzzlebot_planning::planners::OMPLPlanner>(robot_radius_, turning_radius_);
+        RCLCPP_INFO(this->get_logger(), "OMPL Planner initialized with robot radius: %.2f m, turning radius: %.2f m, Occupancy threshold: %d",
+                    robot_radius_, turning_radius_, 20);
         map_sub_ = this->create_subscription<nav_msgs::msg::OccupancyGrid>(
             "map",
             10,
@@ -142,6 +149,8 @@ private:
         }
     }
     bool planning = false;
+    double robot_radius_; // Robot radius as class member
+    double turning_radius_; // Turning radius as class member
     std::shared_ptr<puzzlebot_planning::planners::OMPLPlanner> planner_;
     rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr map_sub_;
     rclcpp::Service<puzzlebot_interfaces::srv::PlanPath>::SharedPtr service_;
