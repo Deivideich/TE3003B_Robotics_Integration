@@ -336,10 +336,6 @@ class MCLNode(Node):
             self.get_logger().warn(f"{str(e)}")
 
     def compute_odometry_delta(self, last_odom, current_odom):
-        """
-        Compute odometry delta using the standard odometry motion model.
-        Returns: (delta_rot1, delta_trans, delta_rot2)
-        """
         def get_pose(odom):
             pos = odom.pose.pose.position
             ori = odom.pose.pose.orientation
@@ -349,57 +345,43 @@ class MCLNode(Node):
         x1, y1, theta1 = get_pose(last_odom)
         x2, y2, theta2 = get_pose(current_odom)
 
-        # Calculate translation distance
-        delta_trans = math.sqrt((x2 - x1)**2 + (y2 - y1)**2)
-        
-        # Calculate initial rotation (from robot heading to movement direction)
-        delta_rot1 = 0.0
-        if delta_trans > 1e-6:  # Only calculate if we actually moved
-            delta_rot1 = self.angle_diff(math.atan2(y2 - y1, x2 - x1), theta1)
-        
-        # Calculate final rotation (remaining rotation after movement)
-        delta_rot2 = self.angle_diff(theta2, theta1 + delta_rot1)
-        
-        return delta_rot1, delta_trans, delta_rot2
+        # Delta in world frame
+        dx_world = x2 - x1
+        dy_world = y2 - y1
+        dtheta = self.angle_diff(theta2, theta1)
+
+        # Transform delta into robot (local) frame at time t1
+        dx_local = math.cos(theta1) * dx_world + math.sin(theta1) * dy_world
+        dy_local = -math.sin(theta1) * dx_world + math.cos(theta1) * dy_world
+
+        return dx_local, dy_local, dtheta
+
+    def angle_diff(self, a, b):
+        diff = a - b
+        return (diff + np.pi) % (2 * np.pi) - np.pi
 
     def motion_update(self, delta):
-        """
-        Apply motion model with noise to all particles.
-        Uses the standard odometry motion model: rot1 -> trans -> rot2
-        """
-        delta_rot1, delta_trans, delta_rot2 = delta
-        
-        # Motion noise parameters (adjust these based on your robot's characteristics)
-        alpha1 = 0.0  # rot1 error from rotation
-        alpha2 = 0.0  # rot1 error from translation  
-        alpha3 = 0.0   # trans error from translation
-        alpha4 = 0.0  # trans error from rotation
-        alpha5 = 0.0   # rot2 error from rotation
-        alpha6 = 0.0  # rot2 error from translation
-        
+        dx, dy, dtheta = delta
+
+        motion_noise = {
+            "x": 0.01,
+            "y": 0.01,
+            "theta": 0.01
+        }
+
         new_particles = []
         for x, y, theta in self.particles:
-            # Add noise to motion commands
-            delta_rot1_noisy = delta_rot1 + np.random.normal(0, 
-                alpha1 * abs(delta_rot1) + alpha2 * delta_trans)
-            
-            delta_trans_noisy = delta_trans + np.random.normal(0, 
-                alpha3 * delta_trans + alpha4 * (abs(delta_rot1) + abs(delta_rot2)))
-            
-            delta_rot2_noisy = delta_rot2 + np.random.normal(0, 
-                alpha5 * abs(delta_rot2) + alpha6 * delta_trans)
-            
-            # Apply motion model
-            x_new = x + delta_trans_noisy * math.cos(theta + delta_rot1_noisy)
-            y_new = y + delta_trans_noisy * math.sin(theta + delta_rot1_noisy)
-            theta_new = theta + delta_rot1_noisy + delta_rot2_noisy
-            
-            # Normalize angle
-            theta_new = (theta_new + math.pi) % (2 * math.pi) - math.pi
-            
+            # Transform robot-frame delta to world frame using particle's heading
+            dx_world = dx * math.cos(theta) - dy * math.sin(theta)
+            dy_world = dx * math.sin(theta) + dy * math.cos(theta)
+
+            x_new = x + dx_world + np.random.normal(0, motion_noise["x"])
+            y_new = y + dy_world + np.random.normal(0, motion_noise["y"])
+            theta_new = theta + dtheta + np.random.normal(0, motion_noise["theta"])
+            theta_new =  (theta_new + math.pi) % (2 * math.pi) - math.pi 
+
             new_particles.append((x_new, y_new, theta_new))
-        
-        self.particles = new_particles
+
 
     
     def angle_diff(self, a, b):
