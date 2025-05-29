@@ -20,6 +20,7 @@ mcl_args = {
     'minAngle': 5.0,
     'repropagateCountNeeded': 1,
     'HZ' : 20.0,
+    'sim': False,
 }
 
 def generate_launch_description():
