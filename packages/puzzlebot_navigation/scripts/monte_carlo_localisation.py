@@ -240,8 +240,6 @@ class MCLNode(Node):
         
         self.transform_laser_scan(msg)
         self.scan_received = True
-
-        
         
     # transform from msg frame to "laser_frame"
     def transform_laser_scan(self, scan_msg):
@@ -550,7 +548,7 @@ class MCLNode(Node):
                 self.resample_particles()
                 self.predictionCounter = 0
 
-        self.publish_particles()
+        # self.publish_particles()
         self.broadcast_transform()
         self.publish_estimated_pose()   
 
