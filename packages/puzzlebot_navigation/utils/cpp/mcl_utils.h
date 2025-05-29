@@ -16,7 +16,7 @@ EXPORT bool resample_particles(
 
 EXPORT bool weight_particles(
     int* map_array, float* map_origin, int* map_shape, float map_resolution,
-    float* scan_angles, float* scan_ranges, int scan_size, float max_range,
+    float* scan_angles, float* scan_ranges, int scan_size, float max_range, int scan_step,
     int num_particles, int num_dimensions, float* particles, 
     float* max_particle, float* weights);
 

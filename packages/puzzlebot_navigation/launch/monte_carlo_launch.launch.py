@@ -10,7 +10,8 @@ from launch_ros.parameter_descriptions import ParameterValue
 
 mcl_args = {
     'useClustering': False,
-    'numParticles': 1000,
+    'numParticles': 300,
+    'scanStep' : 5,
     'minClusterDistance': 0.5,
     'clusterEps': 0.5,
     'clusterMinSamples': 0.05,
@@ -19,6 +20,7 @@ mcl_args = {
     'minAngle': 5.0,
     'repropagateCountNeeded': 1,
     'HZ' : 20.0,
+    'sim': False,
 }
 
 def generate_launch_description():

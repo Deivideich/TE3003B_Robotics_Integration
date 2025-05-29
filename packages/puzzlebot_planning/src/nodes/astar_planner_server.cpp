@@ -97,8 +97,8 @@ class AStarPlannerServer : public rclcpp::Node
             this->declare_parameter("rotational_weight", 0.5f);
             this->declare_parameter("interpolation_steps", 100);
             this->declare_parameter("using_real_sampling", false);
-            this->declare_parameter("robot_width", 0.4f);
-            this->declare_parameter("robot_height", 0.4f);
+            this->declare_parameter("robot_width", 0.2f);
+            this->declare_parameter("robot_height", 0.2f);
         }
 
         void initialize_parameters(){
