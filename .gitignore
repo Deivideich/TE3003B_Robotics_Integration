@@ -13,3 +13,4 @@ logged_data/
 *.pt
 *.pth
 *events.out.tf*
+*truck_*.son
