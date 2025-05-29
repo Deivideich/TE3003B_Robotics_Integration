@@ -320,7 +320,6 @@ class MCLNode(Node):
         except Exception as e:
             self.get_logger().warn(f"{str(e)}")
 
-
     def compute_odometry_delta(self, last_odom, current_odom):
         def get_pose(odom):
             pos = odom.pose.pose.position
@@ -331,10 +330,17 @@ class MCLNode(Node):
         x1, y1, theta1 = get_pose(last_odom)
         x2, y2, theta2 = get_pose(current_odom)
 
-        dx = x2 - x1
-        dy = y2 - y1
+        # Delta in world frame
+        dx_world = x2 - x1
+        dy_world = y2 - y1
         dtheta = self.angle_diff(theta2, theta1)
-        return dx, dy, dtheta
+
+        # Transform delta into robot (local) frame at time t1
+        dx_local = math.cos(theta1) * dx_world + math.sin(theta1) * dy_world
+        dy_local = -math.sin(theta1) * dx_world + math.cos(theta1) * dy_world
+
+        return dx_local, dy_local, dtheta
+
     
     def angle_diff(self, a, b):
         diff = a - b
@@ -413,17 +419,6 @@ class MCLNode(Node):
         if success:
             self.particles  = resampled_particles.reshape((self.num_particles, 3)).tolist()
 
-            # free_indices = np.argwhere(self.map_data == 0)  # 0 = free space
-
-            # for _ in range(int(self.num_particles * self.scale_rd_particles)):
-            #     particle_rd_idx = np.random.randint(0, self.num_particles)
-            #     new_y, new_x = free_indices[np.random.choice(len(free_indices))]
-                
-            #     new_x = new_x * self.map_resolution + self.map_origin.x
-            #     new_y = new_y * self.map_resolution + self.map_origin.y
-            #     new_theta = np.random.uniform(-np.pi, np.pi)
-            #     self.particles[particle_rd_idx] = (new_x, new_y, new_theta)
-
             self.particle_weights = np.ones(self.num_particles)
             self.particle_weights /= self.num_particles
         else:
@@ -433,26 +428,27 @@ class MCLNode(Node):
     def motion_update(self, delta):
         dx, dy, dtheta = delta
 
-        delta_trans = math.sqrt(dx**2 + dy**2)
-        delta_rot = math.atan2(dy, dx)
-        
-        trans_noise_coeff = self.odom_covariance[2] * abs(delta_trans) + self.odom_covariance[3] * abs(dtheta)
-        rot_noise_coeff = self.odom_covariance[0] * abs(dtheta) + self.odom_covariance[1] * abs(delta_trans)
+        motion_noise = {
+            "x": 0.01,
+            "y": 0.01,
+            "theta": 0.01
+        }
 
-        for i, (x, y, theta) in enumerate(self.particles):
-            delta_rot1 = self.angle_diff(math.atan2(dy, dx), theta)
-            delta_rot2 = self.angle_diff(dtheta, delta_rot1)
+        new_particles = []
+        for x, y, theta in self.particles:
+            # Transform robot-frame delta to world frame using particle's heading
+            dx_world = dx * math.cos(theta) - dy * math.sin(theta)
+            dy_world = dx * math.sin(theta) + dy * math.cos(theta)
 
-            delta_trans_noisy = delta_trans + np.random.normal(0, trans_noise_coeff)
-            delta_rot1_noisy = delta_rot1 + np.random.normal(0, rot_noise_coeff)
-            delta_rot2_noisy = delta_rot2 + np.random.normal(0, rot_noise_coeff)
+            x_new = x + dx_world + np.random.normal(0, motion_noise["x"])
+            y_new = y + dy_world + np.random.normal(0, motion_noise["y"])
+            theta_new = theta + dtheta + np.random.normal(0, motion_noise["theta"])
+            theta_new =  (theta_new + math.pi) % (2 * math.pi) - math.pi 
 
-            x_new = x + delta_trans_noisy * math.cos(theta + delta_rot1_noisy)
-            y_new = y + delta_trans_noisy * math.sin(theta + delta_rot1_noisy)
-            theta_new = theta + delta_rot1_noisy + delta_rot2_noisy
-            theta_new = (theta_new + math.pi) % (2 * math.pi) - math.pi
+            new_particles.append((x_new, y_new, theta_new))
 
-            self.particles[i] = (x_new, y_new, theta_new)
+        self.particles = new_particles
+
 
     def broadcast_transform(self):
         try:
@@ -536,9 +532,6 @@ class MCLNode(Node):
             if (neff > self.num_particles * 0.1) and (self.predictionCounter >= self.repropagateCountNeeded):
                 self.resample_particles()
                 self.predictionCounter = 0
-        
-       
-        
 
         # self.publish_particles()
         self.broadcast_transform()
