@@ -28,6 +28,8 @@ class KalmanNode(Node):
         # self.pub_pos = self.create_publisher(PoseStamped, '/estimated_pose', 10)
         self.pub_pos = self.create_publisher(PoseWithCovarianceStamped, '/estimated_pose', 10)
 
+        self.timer = self.create_timer(0.05, self.timer_callback, 10)
+
         self.wheel_radius = 0.05
         self.wheel_base = 0.19 #0.168?
         self.dt = 0.0
@@ -71,6 +73,7 @@ class KalmanNode(Node):
         self.Kalmann_gain = np.zeros((3, 2)) 
         self.uPose = np.zeros((3, 1))
         self.landmark_status = False
+        self.new_odom = False
 
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
@@ -99,6 +102,7 @@ class KalmanNode(Node):
             self.get_logger().warn("Received less than 2 wheel velocities!")
             return
 
+        
         self.omega_l = msg.velocity[0]
         self.omega_r = msg.velocity[1]
 
@@ -112,7 +116,7 @@ class KalmanNode(Node):
         self.v = self.wheel_radius * (self.omega_r + self.omega_l) / 2
         self.w = self.wheel_radius * (self.omega_r - self.omega_l) / self.wheel_base
 
-        self.Kalmann_filter()
+        self.new_odom = True
     
     def calcMiuHat(self):
 
@@ -267,10 +271,9 @@ class KalmanNode(Node):
         
         
     def aruco_callback(self, msg):
-        id = msg.status
+        self.marker_id = msg.status
         if(id in self.valid_id):
             self.landmark_status = True
-            self.marker_id = id
         else:
             self.landmark_status = False
 
@@ -298,6 +301,10 @@ class KalmanNode(Node):
 
         self.set_previous()
 
+    def timer_callback(self):
+        if(self.new_odom):
+            self.new_odom = False
+            self.Kalmann_filter()
 
 
 def main(args=None):
