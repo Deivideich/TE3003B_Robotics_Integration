@@ -8,3 +8,8 @@ install/
 *.zip
 *.jpg
 logged_data/
+
+*.jpg
+*.pth
+
+*.pyc
