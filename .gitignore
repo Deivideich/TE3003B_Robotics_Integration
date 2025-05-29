@@ -6,10 +6,10 @@ install/
 *.so
 *.exe
 *.zip
-*.jpg
 logged_data/
 
-*.jpg
-*.pth
-
 *.pyc
+*.jpg
+*.pt
+*.pth
+*events.out.tf*
