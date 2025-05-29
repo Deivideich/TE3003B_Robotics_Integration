@@ -1,0 +1,4 @@
+sensor_msgs/Image image
+sensor_msgs/CompressedImage image_comp
+---
+ImageClassification image_classification

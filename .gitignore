@@ -5,6 +5,9 @@ install/
 *.o
 *.so
 *.exe
-*.zip
 *.jpg
+*.pt
+*.pth
+*events.out.tf*
+*.zip
 logged_data/
