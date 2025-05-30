@@ -18,13 +18,13 @@ from scipy.spatial.transform import Rotation as R
 
 from puzzlebot_vision.aruco_detector.ArucoDetector import ArucoDetector
 
-ARUCO_THRESHOLD = 0.4  # Adjust this threshold based on your needs
+ARUCO_THRESHOLD = 0.3  # Adjust this threshold based on your needs
 
 class ArucoDetectorNode(Node):
     def __init__(self):
         super().__init__('aruco_detector_node')
         
-        self.aruco_detector = ArucoDetector()
+        self.aruco_detector = ArucoDetector(0.095)
         self.bridge = CvBridge()
         
         self.tf_broadcaster = TransformBroadcaster(self)
@@ -55,7 +55,11 @@ class ArucoDetectorNode(Node):
             10
         )
 
-        
+        self.declare_parameter("usingKalman", False)
+
+    def setup(self):
+        self.usingKalman = self.get_parameter("usingKalman").get_parameter_value().bool_value
+
         self._load_marker_poses_and_publish_static_tfs()
     
     def get_transform_matrix(self, rvec, tvec):
@@ -74,7 +78,6 @@ class ArucoDetectorNode(Node):
         return T_inv
 
     def transform_to_pose(self, T, frame_id="map", stamp=None):
-        from geometry_msgs.msg import PoseStamped
         pose = PoseStamped()
         pose.header.stamp = stamp or rclpy.time.Time().to_msg()
         pose.header.frame_id = frame_id
@@ -139,42 +142,43 @@ class ArucoDetectorNode(Node):
             if marker_id not in self.marker_poses:
                 self.get_logger().warn(f"⚠️ Marker ID {marker_id} not in map.")
                 continue
-
-            # Publish dynamic transform: aruco -> camera_link
-            t = TransformStamped()
-            t.header.stamp = self.get_clock().now().to_msg()
-            t.header.frame_id = f"aruco_{marker_id}"  # parent
-            t.child_frame_id = "camera_link"          # child
-
-            t.transform.translation.x = det["tvec"][0]
-            t.transform.translation.y = det["tvec"][1]
-            t.transform.translation.z = det["tvec"][2]
-
-            r = cv2.Rodrigues(np.array(det["rvec"]))[0]
-            q = R.from_matrix(r).as_quat()  # [x, y, z, w]
-            t.transform.rotation.x = q[0]
-            t.transform.rotation.y = q[1]
-            t.transform.rotation.z = q[2]
-            t.transform.rotation.w = q[3]
-
-            self.tf_broadcaster.sendTransform(t)
-            self.aruco_id_publisher.publish(Int32(data=marker_id))
         
             # Publish pose for AMCL if the Euclidean distance is below the threshold
             if np.linalg.norm(det["tvec"]) < ARUCO_THRESHOLD:
-                initial_pose = PoseWithCovarianceStamped()
-                initial_pose.header.stamp = self.get_clock().now().to_msg()
-                initial_pose.header.frame_id = "map"
-                initial_pose.pose.pose.position.x = det["tvec"][0]
-                initial_pose.pose.pose.position.y = det["tvec"][1]
-                initial_pose.pose.pose.position.z = det["tvec"][2]
-                initial_pose.pose.pose.orientation.x = q[0]
-                initial_pose.pose.pose.orientation.y = q[1]
-                initial_pose.pose.pose.orientation.z = q[2]
-                initial_pose.pose.pose.orientation.w = q[3]
-                initial_pose.pose.covariance = [0.0] * 36
-                self.pose_publisher.publish(initial_pose)
-                self.get_logger().info(f"📦 Published initial pose for AMCL: {initial_pose.pose.pose.position.x}, {initial_pose.pose.pose.position.y}, {initial_pose.pose.pose.position.z}")
+                self.aruco_id_publisher.publish(Int32(data=marker_id))
+
+                if self.usingKalman:
+                    t = TransformStamped()
+                    t.header.stamp = self.get_clock().now().to_msg()
+                    t.header.frame_id = f"aruco_{marker_id}_ob"  # parent
+                    t.child_frame_id = "camera_link"          # child
+
+                    t.transform.translation.x = det["tvec"][0]
+                    t.transform.translation.y = det["tvec"][1]
+                    t.transform.translation.z = det["tvec"][2]
+
+                    r = cv2.Rodrigues(np.array(det["rvec"]))[0]
+                    q = R.from_matrix(r).as_quat()  # [x, y, z, w]
+                    t.transform.rotation.x = q[0]
+                    t.transform.rotation.y = q[1]
+                    t.transform.rotation.z = q[2]
+                    t.transform.rotation.w = q[3]
+                
+                    self.tf_broadcaster.sendTransform(t)
+                else:
+                    initial_pose = PoseWithCovarianceStamped()
+                    initial_pose.header.stamp = self.get_clock().now().to_msg()
+                    initial_pose.header.frame_id = "map"
+                    initial_pose.pose.pose.position.x = det["tvec"][0]
+                    initial_pose.pose.pose.position.y = det["tvec"][1]
+                    initial_pose.pose.pose.position.z = det["tvec"][2]
+                    initial_pose.pose.pose.orientation.x = q[0]
+                    initial_pose.pose.pose.orientation.y = q[1]
+                    initial_pose.pose.pose.orientation.z = q[2]
+                    initial_pose.pose.pose.orientation.w = q[3]
+                    initial_pose.pose.covariance = [0.0] * 36
+                    self.pose_publisher.publish(initial_pose)
+                    self.get_logger().info(f"📦 Published initial pose for AMCL: {initial_pose.pose.pose.position.x}, {initial_pose.pose.pose.position.y}, {initial_pose.pose.pose.position.z}")
                 
     
 def main(args=None):

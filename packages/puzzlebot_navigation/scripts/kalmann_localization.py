@@ -143,7 +143,7 @@ class KalmanNode(Node):
 
             self.aruco_to_robot_tf = self.tf_buffer.lookup_transform(
                 'base_footprint',           # target frame - base footprint
-                f'aruco_{self.marker_id}',      # source frame - aruco
+                f'aruco_{self.marker_id}_ob',      # source frame - aruco
                 now)  #TODO
             
 
