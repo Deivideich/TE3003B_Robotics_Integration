@@ -13,8 +13,7 @@ import yaml
 
 NUMBER_OF_OBJECTS = 3  # Number of objects to be placed in trucks
 IDENTIFY_TRUCK_FIRST = True  # Flag to identify truck types before exploring
-
-
+# Mock modules for testing purposes
 mock_modules = [
     'navigation',
     'vision',
@@ -32,6 +31,7 @@ class PuzzlebotState(Enum):
     PLACING_OBJECT = 7
     RETURNING_FROM_TRUCK = 8
     COMPLETED = 9
+    CHECK_FOR_FOUND_QR_CODES = 10
     ERROR = 99
 
 class TruckType(Enum):
