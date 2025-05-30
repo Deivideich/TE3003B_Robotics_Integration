@@ -19,11 +19,12 @@ import threading
 import sys
 import importlib.resources
 
+valid_ids = [1,2,3,4,5,6,7,8,9,10,11,13]
 
 class ArucoDetectorNode(Node):
     def __init__(self):
         super().__init__('aruco_detector_node')
-        self.aruco_detector = ArucoDetector()
+        self.aruco_detector = ArucoDetector(0.095)
         self.bridge = CvBridge()
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
@@ -77,6 +78,9 @@ class ArucoDetectorNode(Node):
             return
 
         for pose in poses:
+            if not (pose['id'] in self.saved_ids):
+                self.saved_ids.add(pose['id'])
+                
             t = TransformStamped()
             t.header.stamp = now
             t.header.frame_id = "map"
@@ -97,6 +101,8 @@ class ArucoDetectorNode(Node):
 
         for det in detections:
             marker_id = det['id']
+            if not (marker_id in valid_ids):
+                continue
             rvec = np.array(det['rvec'], dtype=np.float64)
             tvec = np.array(det['tvec'], dtype=np.float64)
             T_camera_to_aruco = self.rvec_tvec_to_matrix(rvec, tvec)
