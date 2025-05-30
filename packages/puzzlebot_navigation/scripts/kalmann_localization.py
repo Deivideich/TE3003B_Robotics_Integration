@@ -1,7 +1,7 @@
+#!/usr/bin/env python3
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import JointState
-from builtin_interfaces.msg import Time
 from std_msgs.msg import Header, Int32
 from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped
 from nav_msgs.msg import Odometry
@@ -9,10 +9,10 @@ import math
 import numpy as np
 import cv2
 import tf_transformations
-from builtin_interfaces.msg import Time
 from tf2_ros import TransformBroadcaster, TransformStamped, Buffer, TransformListener
 import tf2_ros
 import time
+from rclpy.time import Time
 
 
 class KalmanNode(Node):
@@ -28,7 +28,7 @@ class KalmanNode(Node):
         # self.pub_pos = self.create_publisher(PoseStamped, '/estimated_pose', 10)
         self.pub_pos = self.create_publisher(PoseWithCovarianceStamped, '/estimated_pose', 10)
 
-        self.timer = self.create_timer(0.05, self.timer_callback, 10)
+        self.timer = self.create_timer(0.05, self.timer_callback)
 
         #Variables for Dead Reckoning
         self.wheel_radius = 0.05
@@ -47,9 +47,7 @@ class KalmanNode(Node):
         self.identity = np.eye(3) # Identity matrix
 
         self.gradient_H = np.zeros((3,3))
-        self.gradient_H[0,0] = 1
-        self.gradient_H[1,1] = 1
-        self.gradient_H[2,2] = 1
+        
 
         self.uHat = np.zeros((3, 1))
         self.theta_prev = 0.0
@@ -75,7 +73,7 @@ class KalmanNode(Node):
         #FLAGS FOR SUB CALLBACKS
         self.landmark_status = False
         self.new_odom = False
-        self.valid_id = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15] # Valid ARUCO IDs
+        self.valid_id = [0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15] # Valid ARUCO IDs
 
         #TF HANDLERS
         self.tf_buffer = Buffer()
@@ -130,6 +128,9 @@ class KalmanNode(Node):
         self.uHat[2, 0] = (self.uHat[2, 0] + math.pi) % (2 * math.pi) - math.pi #Corregir theta
 
     def calc_Gradient_h(self):
+        self.gradient_H[0,0] = 1
+        self.gradient_H[1,1] = 1
+        self.gradient_H[2,2] = 1
         self.gradient_H[0, 2] = -self.dt * self.v * math.sin(self.theta_prev)
         self.gradient_H[1, 2] = self.dt * self.v * math.cos(self.theta_prev)
         
@@ -139,16 +140,16 @@ class KalmanNode(Node):
 
     def obtain_tfs(self):
         try:
-            now = self.get_clock().now()
+            now = self.get_clock().now().to_msg()
             self.aruco_tf = self.tf_buffer.lookup_transform(
-                    'map',  # target frame - map
+                    'base_link',  # target frame - map
                     f'aruco_{self.marker_id}',      # source frame - aruco
-                    now)  # TODO
+                    Time())  # TODO
 
             self.aruco_to_robot_tf = self.tf_buffer.lookup_transform(
-                'base_footprint',           # target frame - base footprint
+                'base_link',           # target frame - base footprint
                 f'aruco_{self.marker_id}_ob',      # source frame - aruco
-                now)  #TODO
+                Time())  #TODO
             
 
 
@@ -163,15 +164,20 @@ class KalmanNode(Node):
         # Nos falta la posicion de los landmarks en el mapa real.
         # Dependiendo del landmark que veamos
 
-        self.m_x = self.aruco_tf.transform.position.x
-        self.m_y = self.aruco_tf.transform.position.y
+        self.m_x = self.aruco_tf.transform.translation.x
+        self.m_y = self.aruco_tf.transform.translation.y
+        
+        
 
         diff_x = self.m_x - self.uHat[0, 0]
         diff_y = self.m_y - self.uHat[1, 0]
-
+        self.get_logger().info(f"Expected aructo at x: {diff_x}, y: {diff_y}")
+        
         self.zHat[0, 0] = np.sqrt( (diff_x)**2 + (diff_y)**2 )
-        self.zHat[1, 0] = math.atan2(diff_y, diff_x) - self.uHat[2, 0] #TODO
-        self.zHat[1, 0] = (self.zHat[1, 0] + math.pi) % (2 * math.pi) - math.pi #Normalizar angulo
+        angle = math.atan2(diff_y, diff_x) - self.uHat[2, 0] #TODO
+        self.zHat[1, 0] = (angle + np.pi) % (2 * np.pi) - np.pi
+        
+        self.get_logger().info(f"Expected aruco at angle: {self.zHat[1, 0]}")
 
 
 
@@ -195,6 +201,7 @@ class KalmanNode(Node):
         self.gradient_G[1, 2] = -1.0
 
     def Calc_Z(self):
+        
         self.Z_mat = self.gradient_G @ self.Sigma_hat @ self.gradient_G.T + self.R_error
         
     def calc_KalmannGain(self):
@@ -205,7 +212,8 @@ class KalmanNode(Node):
     
     def yaw_from_quaternion(self, q):
         try:
-            _, _, yaw = tf_transformations.euler_from_quaternion(q)
+            quat = [q.x, q.y, q.z, q.w]
+            _, _, yaw = tf_transformations.euler_from_quaternion(quat)
             return yaw
         except Exception as e:
             self.get_logger().warn(f"Error converting quaternion to euler: {str(e)}")
@@ -215,14 +223,21 @@ class KalmanNode(Node):
     def calc_miu(self):
         z_vec = np.zeros((2, 1)) # This needs to be the SinglePoseMarker with Transforms. I need euclidean distance and angle from base_footprint I think?
 
-        x = self.aruco_to_robot_tf.transform.position.x
-        y = self.aruco_to_robot_tf.transform.position.y
+        x = self.aruco_to_robot_tf.transform.translation.x
+        y = self.aruco_to_robot_tf.transform.translation.y
+        
+        self.get_logger().info(f"Saw aructo at x: {x}, y: {y}")
 
         q = self.aruco_to_robot_tf.transform.rotation
         
 
         z_vec[0, 0] = self.euclidean_distance(x, y)
-        z_vec[1, 0] = self.yaw_from_quaternion(q)
+        z_vec[1, 0] = (math.atan2(y, x) + np.pi) % (2 * np.pi) - np.pi
+        
+        self.get_logger().info(f"Saw aruco at angle: {z_vec[1,0]}")
+
+        self.get_logger().info(f'z =\n{z_vec}\nzHat =\n{self.zHat}\ndiff =\n{z_vec - self.zHat}')
+
 
         self.uPose = self.uHat + self.Kalmann_gain @ (z_vec - self.zHat)
 
@@ -310,16 +325,16 @@ class KalmanNode(Node):
 
         q = self.euler_to_quaternion(0.0, 0.0, self.uPose[2, 0])
         
-        msg = PoseStamped()
+        msg = PoseWithCovarianceStamped()
         msg.header.stamp = self.get_clock().now().to_msg()
-        msg.header.frame_id = 'pose_kalman' #TODO
-        msg.pose.position.x = self.uPose[0]
-        msg.pose.position.y = self.uPose[1]
-        msg.pose.position.z = 0.0
-        msg.pose.orientation.x = q[0]
-        msg.pose.orientation.y = q[1]
-        msg.pose.orientation.z = q[2]
-        msg.pose.orientation.w = q[3]
+        msg.header.frame_id = 'map' #TODO
+        msg.pose.pose.position.x = float(self.uPose[0, 0])
+        msg.pose.pose.position.y = float(self.uPose[1, 0])
+        msg.pose.pose.position.z = 0.0
+        msg.pose.pose.orientation.x = q[0]
+        msg.pose.pose.orientation.y = q[1]
+        msg.pose.pose.orientation.z = q[2]
+        msg.pose.pose.orientation.w = q[3]
 
         ros_cov = np.zeros(36)
         ros_cov[0] = self.Sigma_cov[0, 0] # x,x
@@ -346,28 +361,37 @@ class KalmanNode(Node):
 
     def Kalmann_filter(self):
         #Obtain covariance
+        # self.get_logger().info('Obtaining Q')
+        start_time = time.perf_counter()
         self.obtain_Q()
-
+        # self.get_logger().info('Dead Reckoning')
         self.calcMiuHat()
         self.calc_Gradient_h()
         self.calc_SigmaHat()
         # Check if landmark is visible, to correct using observations
-        if(self.landmark_status):
-            self.obtain_tfs()
+        if(self.landmark_status and self.obtain_tfs()):
+            # self.get_logger().info('Correction')
             self.Calc_zHat()
             self.calc_Gradient_h()
             self.Calc_Z()
             self.calc_KalmannGain()
+            # self.get_logger().info(f'Kalman Gain:\n{self.Kalmann_gain}')
             self.calc_miu()
-            self.calc_sigma()
+            self.calc_sigma()        
+            self.landmark_status = False
 
         # If landmark is not visible, use prediction (Dead Reckoning only)
         else:
             self.uPose = self.uHat
             self.Sigma_cov = self.Sigma_hat
 
-        self.set_previous()
+        # self.get_logger().info(f'Pose actual: x={self.uPose[0,0]:.2f}, y={self.uPose[1,0]:.2f}, θ={self.uPose[2,0]:.2f}')
+        
         self.broadcast_transform() #Broadcast transform between map and odom
+        self.set_previous()
+        elapsed_time = time.perf_counter() - start_time
+        self.get_logger().info(f"[⏱️] Tiempo del ciclo Kalman: {elapsed_time:.4f} segundos")
+
 
     def timer_callback(self):
         if(self.new_odom):

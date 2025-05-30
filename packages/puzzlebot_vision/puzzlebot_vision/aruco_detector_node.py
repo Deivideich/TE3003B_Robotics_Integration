@@ -18,7 +18,7 @@ from scipy.spatial.transform import Rotation as R
 
 from puzzlebot_vision.aruco_detector.ArucoDetector import ArucoDetector
 
-ARUCO_THRESHOLD = 0.3  # Adjust this threshold based on your needs
+ARUCO_THRESHOLD = 0.45  # Adjust this threshold based on your needs
 
 class ArucoDetectorNode(Node):
     def __init__(self):
@@ -54,6 +54,12 @@ class ArucoDetectorNode(Node):
             "/aruco_id",
             10
         )
+
+        self.file_path = os.path.join(
+        os.path.dirname(os.path.realpath(__file__)),  # current file directory
+         "aruco_detector", "aruco_map_poses", "aruco_poses.json"
+        )
+        self.file_path = os.path.abspath(self.file_path)
 
         self.declare_parameter("usingKalman", False)
 
@@ -93,9 +99,11 @@ class ArucoDetectorNode(Node):
     
     def _load_marker_poses_and_publish_static_tfs(self):
         try:
-            with importlib.resources.files('puzzlebot_vision.aruco_detector.aruco_map_poses').joinpath('aruco_poses.json').open('r') as f:
+            with open(self.file_path, 'r') as f:
                 marker_data = json.load(f)
                 self.marker_poses = {}
+
+                static_transforms = []
 
                 for entry in marker_data:
                     marker_id = entry["id"]
@@ -114,8 +122,10 @@ class ArucoDetectorNode(Node):
                     t.transform.rotation.z = entry["rotation"]["z"]
                     t.transform.rotation.w = entry["rotation"]["w"]
 
-                    self.static_tf_broadcaster.sendTransform(t)
-                
+                    static_transforms.append(t)
+
+                    
+                self.static_tf_broadcaster.sendTransform(static_transforms)
                 self.get_logger().info("✅ Published static map → aruco_<id> transforms.")
                 return True
         except FileNotFoundError:
@@ -148,10 +158,12 @@ class ArucoDetectorNode(Node):
                 self.aruco_id_publisher.publish(Int32(data=marker_id))
 
                 if self.usingKalman:
+
+                    # self.get_logger().info(f'Sending observation tf {marker_id}')
                     t = TransformStamped()
                     t.header.stamp = self.get_clock().now().to_msg()
-                    t.header.frame_id = f"aruco_{marker_id}_ob"  # parent
-                    t.child_frame_id = "camera_link"          # child
+                    t.header.frame_id = "camera_base_link"  # parent
+                    t.child_frame_id = f"aruco_{marker_id}_ob"          # child
 
                     t.transform.translation.x = det["tvec"][0]
                     t.transform.translation.y = det["tvec"][1]
@@ -184,6 +196,7 @@ class ArucoDetectorNode(Node):
 def main(args=None):
     rclpy.init(args=args)
     node = ArucoDetectorNode()
+    node.setup()
     rclpy.spin(node)
     node.destroy_node()
     rclpy.shutdown()

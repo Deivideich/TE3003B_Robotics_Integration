@@ -97,12 +97,12 @@ def generate_launch_description():
         ),
 
         #Launch EKF
-        Node(
-            package='puzzlebot_navigation',
-            executable='kalmann_localization',
-            name='kalmann_localization',
-            output='screen'
-        ),
+        # Node(
+        #     package='puzzlebot_navigation',
+        #     executable='kalmann_localization.py',
+        #     name='kalmann_localization',
+        #     output='screen',
+        # ),
 
         #Launch local map
         Node(
