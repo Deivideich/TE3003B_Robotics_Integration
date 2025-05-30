@@ -30,53 +30,64 @@ class KalmanNode(Node):
 
         self.timer = self.create_timer(0.05, self.timer_callback, 10)
 
+        #Variables for Dead Reckoning
         self.wheel_radius = 0.05
         self.wheel_base = 0.19 #0.168?
-        self.dt = 0.0
-        self.last_time = self.get_clock().now().seconds_nanoseconds()[0] + \
-                         self.get_clock().now().seconds_nanoseconds()[1] * 1e-9
 
         self.omega_l = 0.0
         self.omega_r = 0.0
 
-        self.uHat = np.zeros((3, 1))
-        self.theta_prev = 0.0
+        self.dt = 0.0
+        self.last_time = self.get_clock().now().seconds_nanoseconds()[0] + \
+                         self.get_clock().now().seconds_nanoseconds()[1] * 1e-9
+
+        #Variables for Kalman
+        self.Kalmann_gain = np.zeros((3, 2)) 
+        self.uPose = np.zeros((3, 1))
+        self.identity = np.eye(3) # Identity matrix
 
         self.gradient_H = np.zeros((3,3))
         self.gradient_H[0,0] = 1
         self.gradient_H[1,1] = 1
         self.gradient_H[2,2] = 1
 
+        self.uHat = np.zeros((3, 1))
+        self.theta_prev = 0.0
+
         self.Sigma_cov = np.zeros((3,3))
         self.Sigma_hat = np.zeros((3,3))
-        
-        self.error_Q = np.zeros((3,3)) # Process noise covariance matrix
-        self.K_R = 0.30406416057210744
-        self.K_L = 0.38899148975615183
 
         self.zHat = np.zeros((2, 1))
 
-        self.valid_id = [0, 1, 2, 3, 4, 5, 6, 7] # Valid ARUCO IDs
+        self.Z_mat = np.zeros((2,2))
 
         self.gradient_G = np.zeros((2,3))
         self.gradient_G[1, 2] = -1
-
-        self.Z_mat = np.zeros((2,2))
+        
+        #Q error for model
+        self.error_Q = np.zeros((3,3)) # Process noise covariance matrix
+        self.K_R = 0.30406416057210744
+        self.K_L = 0.38899148975615183
+        #Camera error, not tuned
         self.R_error = np.array([[0.1, 0],
                                  [0, 0.02]])
+
         
-        self.omega_l = 0.0
-        self.omega_r = 0.0
         
-        self.identity = np.eye(3) # Identity matrix
+
         
-        self.Kalmann_gain = np.zeros((3, 2)) 
-        self.uPose = np.zeros((3, 1))
+        
+        
+                
+        #FLAGS FOR SUB CALLBACKS
         self.landmark_status = False
         self.new_odom = False
+        self.valid_id = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15] # Valid ARUCO IDs
 
+        #TF HANDLERS
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
+        self.tf_broadcaster = TransformBroadcaster(self)
         time.sleep(1)
 
     def obtain_Q(self):
@@ -120,10 +131,10 @@ class KalmanNode(Node):
     
     def calcMiuHat(self):
 
-        self.uHat[0] += self.dt * self.v * math.cos(self.theta_prev)
-        self.uHat[1] += self.dt * self.v * math.sin(self.theta_prev) 
-        self.uHat[2] += self.dt * self.w
-        self.uHat[2] = (self.uHat[2] + math.pi) % (2 * math.pi) - math.pi #Corregir theta
+        self.uHat[0, 0] += self.dt * self.v * math.cos(self.theta_prev)
+        self.uHat[1, 0] += self.dt * self.v * math.sin(self.theta_prev) 
+        self.uHat[2, 0] += self.dt * self.w
+        self.uHat[2, 0] = (self.uHat[2, 0] + math.pi) % (2 * math.pi) - math.pi #Corregir theta
 
     def calc_Gradient_h(self):
         self.gradient_H[0, 2] = -self.dt * self.v * math.sin(self.theta_prev)
@@ -162,12 +173,12 @@ class KalmanNode(Node):
         self.m_x = self.aruco_tf.transform.position.x
         self.m_y = self.aruco_tf.transform.position.y
 
-        diff_x = self.m_x - self.uHat[0]
-        diff_y = self.m_y - self.uHat[1]
+        diff_x = self.m_x - self.uHat[0, 0]
+        diff_y = self.m_y - self.uHat[1, 0]
 
-        self.zHat[0] = np.sqrt( (diff_x)**2 + (diff_y)**2 )
-        self.zHat[1] = math.atan2(diff_y, diff_x) - self.uHat[2] #TODO
-        self.zHat[1] = (self.zHat[1] + math.pi) % (2 * math.pi) - math.pi #Normalizar angulo
+        self.zHat[0, 0] = np.sqrt( (diff_x)**2 + (diff_y)**2 )
+        self.zHat[1, 0] = math.atan2(diff_y, diff_x) - self.uHat[2, 0] #TODO
+        self.zHat[1, 0] = (self.zHat[1, 0] + math.pi) % (2 * math.pi) - math.pi #Normalizar angulo
 
 
 
@@ -177,8 +188,8 @@ class KalmanNode(Node):
     def calc_Gradient_g(self):
         #TODO
 
-        diff_x = self.m_x - self.uHat[0]
-        diff_y = self.m_y - self.uHat[1]
+        diff_x = self.m_x - self.uHat[0, 0]
+        diff_y = self.m_y - self.uHat[1, 0]
         
         sum_sq = diff_y ** 2 + diff_x ** 2
         
@@ -217,8 +228,8 @@ class KalmanNode(Node):
         q = self.aruco_to_robot_tf.transform.rotation
         
 
-        z_vec[0] = self.euclidean_distance(x, y)
-        z_vec[1] = self.yaw_from_quaternion(q)
+        z_vec[0, 0] = self.euclidean_distance(x, y)
+        z_vec[1, 0] = self.yaw_from_quaternion(q)
 
         self.uPose = self.uHat + self.Kalmann_gain @ (z_vec - self.zHat)
 
@@ -235,13 +246,76 @@ class KalmanNode(Node):
     def calc_sigma(self):
         self.Sigma_cov = (self.identity - self.Kalmann_gain @ self.gradient_G) @ self.Sigma_hat
 
-    def set_previous(self):
-        self.uHat[0] = self.uPose[0]
-        self.uHat[1] = self.uPose[1]
-        self.uHat[2] = self.uPose[2]
-        self.theta_prev = self.uPose[2]
+    def estimate_pose(self):
+        return self.uPose[0, 0], self.uPose[1, 0], self.uPose[2, 0] # x,y,theta
 
-        q = self.euler_to_quaternion(0.0, 0.0, self.uPose[2])
+
+    def broadcast_transform(self):
+        try:
+            x, y, theta = self.estimate_pose()
+
+            x, y, theta = float(x), float(y), float(theta)
+
+            # Get odom -> base_link transform
+            trans = self.tf_buffer.lookup_transform(
+                'odom',
+                'base_link',
+                rclpy.time.Time(),
+                timeout=rclpy.duration.Duration(seconds=1.0)
+            )
+
+            # Compose transformation: map -> base_link
+            map_to_base = tf_transformations.compose_matrix(
+                translate=[x, y, 0],
+                angles=[0, 0, theta]
+            )
+
+            # Compose transformation: odom -> base_link (from TF)
+            trans_translation = trans.transform.translation
+            trans_rotation = trans.transform.rotation
+            odom_to_base = tf_transformations.compose_matrix(
+                translate=[trans_translation.x, trans_translation.y, trans_translation.z],
+                angles=tf_transformations.euler_from_quaternion([
+                    trans_rotation.x,
+                    trans_rotation.y,
+                    trans_rotation.z,
+                    trans_rotation.w
+                ])
+            )
+
+            # map -> odom = map -> base × inverse(odom -> base)
+            base_to_odom = np.linalg.inv(odom_to_base)
+            map_to_odom = np.dot(map_to_base, base_to_odom)
+
+            translation = map_to_odom[:3, 3]
+            rotation = tf_transformations.quaternion_from_matrix(map_to_odom)
+
+            t = TransformStamped()
+            t.header.stamp = self.get_clock().now().to_msg()
+            t.header.frame_id = 'map'
+            t.child_frame_id = 'odom'
+            t.transform.translation.x = translation[0]
+            t.transform.translation.y = translation[1]
+            t.transform.translation.z = translation[2]
+            t.transform.rotation.x = rotation[0]
+            t.transform.rotation.y = rotation[1]
+            t.transform.rotation.z = rotation[2]
+            t.transform.rotation.w = rotation[3]
+
+            self.tf_broadcaster.sendTransform(t)
+        
+        except Exception as e:
+            self.get_logger().warn(f"TF broadcast error: {str(e)}")
+
+
+
+    def set_previous(self):
+        self.uHat[0, 0] = self.uPose[0, 0]
+        self.uHat[1, 0] = self.uPose[1, 0]
+        self.uHat[2, 0] = self.uPose[2, 0]
+        self.theta_prev = self.uPose[2, 0]
+
+        q = self.euler_to_quaternion(0.0, 0.0, self.uPose[2, 0])
         
         msg = PoseStamped()
         msg.header.stamp = self.get_clock().now().to_msg()
@@ -271,16 +345,16 @@ class KalmanNode(Node):
         
         
     def aruco_callback(self, msg):
-        self.marker_id = msg.status
-        if(id in self.valid_id):
+        self.marker_id = msg.data #TODO?
+        if(self.marker_id in self.valid_id):
             self.landmark_status = True
         else:
             self.landmark_status = False
 
     def Kalmann_filter(self):
-
+        #Obtain covariance
         self.obtain_Q()
-        
+
         self.calcMiuHat()
         self.calc_Gradient_h()
         self.calc_SigmaHat()
@@ -300,6 +374,7 @@ class KalmanNode(Node):
             self.Sigma_cov = self.Sigma_hat
 
         self.set_previous()
+        self.broadcast_transform() #Broadcast transform between map and odom
 
     def timer_callback(self):
         if(self.new_odom):
