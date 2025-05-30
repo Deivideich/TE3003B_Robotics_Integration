@@ -71,13 +71,6 @@ class KalmanNode(Node):
         #Camera error, not tuned
         self.R_error = np.array([[0.1, 0],
                                  [0, 0.02]])
-
-        
-        
-
-        
-        
-        
                 
         #FLAGS FOR SUB CALLBACKS
         self.landmark_status = False

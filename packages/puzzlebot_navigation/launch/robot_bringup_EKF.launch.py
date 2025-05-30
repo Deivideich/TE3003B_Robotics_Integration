@@ -87,6 +87,15 @@ def generate_launch_description():
             output="screen",
         ),
 
+        #Launch Aruco
+        Node(
+            package='puzzlebot_vision',
+            executable='aruco_detector_node.py',
+            name='aruco_detector_node',
+            output='screen',
+            parameters=[{'usingKalman': True}],
+        ),
+
         #Launch EKF
         Node(
             package='puzzlebot_navigation',
