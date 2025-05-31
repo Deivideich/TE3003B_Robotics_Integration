@@ -104,15 +104,8 @@ class KalmanNode(Node):
             self.get_logger().warn("Received less than 2 wheel velocities!")
             return
 
-        
         self.omega_l = msg.velocity[0]
         self.omega_r = msg.velocity[1]
-
-        # Update dt
-        current_time = self.get_clock().now().seconds_nanoseconds()
-        now = current_time[0] + current_time[1] * 1e-9
-        self.dt = now - self.last_time
-        self.last_time = now
 
         # Direct kinematics
         self.v = self.wheel_radius * (self.omega_r + self.omega_l) / 2
@@ -121,6 +114,12 @@ class KalmanNode(Node):
         self.new_odom = True
     
     def calcMiuHat(self):
+
+        # Update dt
+        current_time = self.get_clock().now().seconds_nanoseconds()
+        now = current_time[0] + current_time[1] * 1e-9
+        self.dt = now - self.last_time
+        self.last_time = now
 
         self.uHat[0, 0] += self.dt * self.v * math.cos(self.theta_prev)
         self.uHat[1, 0] += self.dt * self.v * math.sin(self.theta_prev) 
@@ -142,7 +141,7 @@ class KalmanNode(Node):
         try:
             now = self.get_clock().now().to_msg()
             self.aruco_tf = self.tf_buffer.lookup_transform(
-                    'base_link',  # target frame - map
+                    'map',  # target frame - map
                     f'aruco_{self.marker_id}',      # source frame - aruco
                     Time())  # TODO
 
@@ -166,8 +165,6 @@ class KalmanNode(Node):
 
         self.m_x = self.aruco_tf.transform.translation.x
         self.m_y = self.aruco_tf.transform.translation.y
-        
-        
 
         diff_x = self.m_x - self.uHat[0, 0]
         diff_y = self.m_y - self.uHat[1, 0]
@@ -372,7 +369,7 @@ class KalmanNode(Node):
         if(self.landmark_status and self.obtain_tfs()):
             # self.get_logger().info('Correction')
             self.Calc_zHat()
-            self.calc_Gradient_h()
+            self.calc_Gradient_g()
             self.Calc_Z()
             self.calc_KalmannGain()
             # self.get_logger().info(f'Kalman Gain:\n{self.Kalmann_gain}')
