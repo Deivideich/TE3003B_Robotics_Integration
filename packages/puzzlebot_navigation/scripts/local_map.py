@@ -42,10 +42,15 @@ class LocalMapPublisher(Node):
 
         # Publisher for the local map
         self.map_publisher = self.create_publisher(OccupancyGrid, 'local_map', 10)
+        self.local_map_scan_publisher = self.create_publisher(LaserScan, 'local_map_merged_scan', 10)
 
         # Subscribers
-        self.scan_subscriber = self.create_subscription(LaserScan, 'scan', self.scan_callback, 10)
-        self.qr_pose_subscriber = self.create_subscription(PoseStamped, '/vision/qr_pose', self.qr_pose_callback, 10)
+        qos = rclpy.qos.QoSProfile(depth=10)
+        qos.reliability = rclpy.qos.QoSReliabilityPolicy.BEST_EFFORT
+        self.scan_subscriber = self.create_subscription(LaserScan, 'scan', self.scan_callback, qos)
+        self.qr_pose_subscriber = self.create_subscription(PoseStamped, '/vision/qr_pose', self.qr_pose_callback, qos)
+        
+        self.local_map_timer = self.create_timer(0.1, self.publish_map)  # Adjust timer as needed
 
         self.get_logger().info('Local map publisher with QR pose tracking initialized.')
 
@@ -66,6 +71,7 @@ class LocalMapPublisher(Node):
             self.get_logger().warn(f'Could not transform QR pose: {e}')
 
     def scan_callback(self, msg: LaserScan):
+        # TODO: CHANGE THIS FOR REAL ROBOT msg.angle_min and max + pi
         local_map = -1 * np.ones((self.map_height_cells, self.map_width_cells), dtype=np.int8)
 
         # Fill in laser scan data
@@ -89,10 +95,9 @@ class LocalMapPublisher(Node):
 
             if abs(x) <= self.map_width / 2 and abs(y) <= self.map_height / 2:
                 self.draw_object_on_map(local_map, x, y)
+                self.draw_object_on_laser_scan(msg, local_map x, y)
             else:
                 self.latest_qr_pose = None
-
-        self.publish_map(local_map)
 
     def draw_object_on_map(self, local_map, x, y):
         half_w = self.object_width / 2
@@ -107,8 +112,51 @@ class LocalMapPublisher(Node):
             for map_x in range(x_min, x_max + 1):
                 if 0 <= map_x < self.map_width_cells and 0 <= map_y < self.map_height_cells:
                     local_map[map_y, map_x] = 100  # same value as obstacle
+                    
+    def draw_object_on_laser_scan(self, msg, local_map, x, y):
+        # Convert object position to polar coordinates
+        angle = math.atan2(y, x)
+        distance = math.sqrt(x**2 + y**2)
+        
+        # use local map to find which indexes to change
+        # Find the range of angles that correspond to the object
+        half_w = self.object_width / 2
+        half_h = self.object_height / 2
 
-    def publish_map(self, local_map):
+        # Calculate the angular extent of the object
+        angle_to_left_edge = math.atan2(y + half_h, x - half_w)
+        angle_to_right_edge = math.atan2(y - half_h, x + half_w)
+
+        # Find corresponding indices in the laser scan
+        angle_min_idx = int((angle_to_right_edge - msg.angle_min) / msg.angle_increment)
+        angle_max_idx = int((angle_to_left_edge - msg.angle_min) / msg.angle_increment)
+
+        # Clamp indices to valid range
+        angle_min_idx = max(0, min(angle_min_idx, len(msg.ranges) - 1))
+        angle_max_idx = max(0, min(angle_max_idx, len(msg.ranges) - 1))
+
+        # Create a modified laser scan with the object's distance
+        modified_ranges = list(msg.ranges)
+        for i in range(angle_min_idx, angle_max_idx + 1):
+            if distance < modified_ranges[i] or modified_ranges[i] < msg.range_min or modified_ranges[i] > msg.range_max:
+                modified_ranges[i] = distance
+
+        # Publish the modified laser scan
+        local_scan = LaserScan()
+        local_scan.header = msg.header
+        local_scan.angle_min = msg.angle_min
+        local_scan.angle_max = msg.angle_max
+        local_scan.angle_increment = msg.angle_increment
+        local_scan.time_increment = msg.time_increment
+        local_scan.scan_time = msg.scan_time
+        local_scan.range_min = msg.range_min
+        local_scan.range_max = msg.range_max
+        local_scan.ranges = modified_ranges
+        self.local_map_scan_publisher.publish(local_scan)
+
+    def publish_map(self):
+        if self.local_map is None:
+            return 
         occupancy_grid = OccupancyGrid()
         occupancy_grid.header.stamp = self.get_clock().now().to_msg()
         occupancy_grid.header.frame_id = 'base_link'
@@ -120,7 +168,7 @@ class LocalMapPublisher(Node):
         occupancy_grid.info.origin.position.y = -self.map_height / 2
         occupancy_grid.info.origin.orientation.w = 1.0
 
-        occupancy_grid.data = local_map.flatten().tolist()
+        occupancy_grid.data = self.local_map.flatten().tolist()
         self.map_publisher.publish(occupancy_grid)
 
 
