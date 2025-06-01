@@ -143,6 +143,7 @@ def generate_launch_description():
                 "-Y", "0"     # Yaw
             ],
             output="screen"
+        ),
         
         
         TimerAction(
@@ -237,5 +238,6 @@ def generate_launch_description():
             name="rviz2",
             output="screen",
             arguments=["-d", default_rviz_config_path]
-        )
+        ),
+        
     ])
