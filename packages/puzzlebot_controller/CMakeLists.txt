@@ -19,7 +19,6 @@ find_package(tf2_geometry_msgs REQUIRED)
 add_library(puzzlebot_controller_include SHARED
     src/include/pure_pursuit.cpp
     src/include/pid_controller.cpp
-    src/include/bug2_controller.cpp
 )
 target_include_directories(puzzlebot_controller_include PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
