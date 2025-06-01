@@ -16,8 +16,8 @@ class LocalMapPublisher(Node):
         super().__init__('local_map_publisher')
 
         # Map parameters
-        self.declare_parameter('map_width', 2.0)  # in meters
-        self.declare_parameter('map_height', 2.0)
+        self.declare_parameter('map_width', 1.0)  # in meters
+        self.declare_parameter('map_height', 1.0)
         self.declare_parameter('map_resolution', 0.05)
 
         # Object drawing parameters

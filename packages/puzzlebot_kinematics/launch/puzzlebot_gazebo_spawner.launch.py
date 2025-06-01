@@ -121,7 +121,7 @@ def generate_launch_description():
             package="gazebo_ros",
             executable="spawn_entity.py",  # Using spawn_entity.py instead of spawn_model.py
             arguments=[
-                "-file", os.path.join(small_gazebo_model_path, "model.sdf"),  # Replace with model.sdf path
+                "-file", os.path.join(gazebo_model_path, "model.sdf"),  # Replace with model.sdf path
                 "-entity", "wall_model",  # Correct entity name here
                 "-robot_namespace", "wall"
             ],
