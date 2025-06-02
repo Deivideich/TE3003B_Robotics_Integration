@@ -34,7 +34,9 @@ class LocalMapPublisher(Node):
         self.map_height_cells = int(self.map_height / self.map_resolution)
 
         # Internal storage
+        self.local_map = -1 * np.ones((self.map_height_cells, self.map_width_cells), dtype=np.int8)
         self.latest_qr_pose = None
+        self.laser_scan_merged = None
 
         # tf2 buffer and listener
         self.tf_buffer = tf2_ros.Buffer()
@@ -73,7 +75,6 @@ class LocalMapPublisher(Node):
     def scan_callback(self, msg: LaserScan):
         # TODO: CHANGE THIS FOR REAL ROBOT msg.angle_min and max + pi
         local_map = -1 * np.ones((self.map_height_cells, self.map_width_cells), dtype=np.int8)
-
         # Fill in laser scan data
         angle = msg.angle_min
         for r in msg.ranges:
@@ -83,21 +84,26 @@ class LocalMapPublisher(Node):
 
                 map_x = int((x + self.map_width / 2) / self.map_resolution)
                 map_y = int((y + self.map_height / 2) / self.map_resolution)
-
-                if 0 <= map_x < self.map_width_cells and 0 <= map_y < self.map_height_cells:
+                if (0 <= map_x < self.map_width_cells) and (0 <= map_y < self.map_height_cells):
                     local_map[map_y, map_x] = 100
             angle += msg.angle_increment
 
         # Draw QR object if available
+        modified_ranges = msg.ranges
         if self.latest_qr_pose is not None:
             x = self.latest_qr_pose.pose.position.x
             y = self.latest_qr_pose.pose.position.y
 
             if abs(x) <= self.map_width / 2 and abs(y) <= self.map_height / 2:
                 self.draw_object_on_map(local_map, x, y)
-                self.draw_object_on_laser_scan(msg, local_map x, y)
+                modified_ranges = self.draw_object_on_laser_scan(msg, local_map, x, y)
             else:
                 self.latest_qr_pose = None
+        
+        self.local_map = local_map
+        self.laser_scan_merged = msg
+        self.laser_scan_merged.ranges = modified_ranges
+        
 
     def draw_object_on_map(self, local_map, x, y):
         half_w = self.object_width / 2
@@ -141,18 +147,7 @@ class LocalMapPublisher(Node):
             if distance < modified_ranges[i] or modified_ranges[i] < msg.range_min or modified_ranges[i] > msg.range_max:
                 modified_ranges[i] = distance
 
-        # Publish the modified laser scan
-        local_scan = LaserScan()
-        local_scan.header = msg.header
-        local_scan.angle_min = msg.angle_min
-        local_scan.angle_max = msg.angle_max
-        local_scan.angle_increment = msg.angle_increment
-        local_scan.time_increment = msg.time_increment
-        local_scan.scan_time = msg.scan_time
-        local_scan.range_min = msg.range_min
-        local_scan.range_max = msg.range_max
-        local_scan.ranges = modified_ranges
-        self.local_map_scan_publisher.publish(local_scan)
+        return modified_ranges
 
     def publish_map(self):
         if self.local_map is None:
@@ -170,6 +165,11 @@ class LocalMapPublisher(Node):
 
         occupancy_grid.data = self.local_map.flatten().tolist()
         self.map_publisher.publish(occupancy_grid)
+        
+        if self.laser_scan_merged is not None:
+            self.laser_scan_merged.header.stamp = self.get_clock().now().to_msg()
+            self.laser_scan_merged.header.frame_id = 'base_link'
+            self.local_map_scan_publisher.publish(self.laser_scan_merged)
 
 
 def main(args=None):
