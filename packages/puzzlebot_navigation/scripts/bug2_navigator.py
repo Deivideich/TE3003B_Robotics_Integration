@@ -117,7 +117,7 @@ class BugController(Node):
         self.dist_thresh_wf = 0.4 # in meters  
         
         # We don't want to get too close to the wall though.
-        self.dist_too_close_to_wall = 0.15 # in meters
+        self.dist_too_close_to_wall = 0.2 # in meters
         
         self.bug0_switch = "ON"
         
@@ -210,7 +210,7 @@ class BugController(Node):
         """
         # (e.g. -90 degrees to 90 degrees....0 to 180 degrees)
         
-        range = 6
+        range = 3
         
         self.right_dist = np.mean(msg.ranges[(90-range):(90+range)]) # Left
         self.rightfront_dist = np.mean(msg.ranges[(135-range):(135+range)])
@@ -465,48 +465,21 @@ class BugController(Node):
         right_covered = self.right_dist < d # or self.rightback_dist < d
         
         
-        if self.leftfront_dist > d and self.front_dist > d and self.rightfront_dist > d and not right_covered:
+        if self.front_dist > d and self.rightfront_dist > d and not right_covered:
             self.wall_following_state = "search for wall"
             msg.linear.x = self.forward_speed
             msg.angular.z = -self.turning_speed_wf_slow # turn right to find wall
             
-        elif self.leftfront_dist > d and self.front_dist < d and self.rightfront_dist > d:
-            self.wall_following_state = "turn left"
-            msg.angular.z = self.turning_speed_wf_fast
-            
-            
-        elif (self.leftfront_dist > d and self.front_dist > d and (self.rightfront_dist < d or right_covered)):
+        elif (self.front_dist > d and (self.rightfront_dist < d or right_covered)):
             if (self.rightfront_dist < self.dist_too_close_to_wall or self.right_dist < self.dist_too_close_to_wall):
                 # Getting too close to the wall
-                self.wall_following_state = "turn left"
+                self.wall_following_state = "turn left too close"
                 msg.linear.x = self.forward_speed * 0.5
-                msg.angular.z = self.turning_speed_wf_slow      
+                msg.angular.z = self.turning_speed_wf_fast      
             else:           
                 # Go straight ahead
                 self.wall_following_state = "follow wall" 
                 msg.linear.x = self.forward_speed
-                                    
-        elif self.leftfront_dist < d and self.front_dist > d and self.rightfront_dist > d and not right_covered:
-            self.wall_following_state = "search for wall"
-            msg.linear.x = self.forward_speed
-            msg.angular.z = -self.turning_speed_wf_slow # turn right to find wall
-            
-        elif self.leftfront_dist > d and self.front_dist < d and self.rightfront_dist < d:
-            self.wall_following_state = "turn left"
-            msg.angular.z = self.turning_speed_wf_fast
-            
-        elif self.leftfront_dist < d and self.front_dist < d and self.rightfront_dist > d:
-            self.wall_following_state = "turn left"
-            msg.angular.z = self.turning_speed_wf_fast
-            
-        elif self.leftfront_dist < d and self.front_dist < d and self.rightfront_dist < d:
-            self.wall_following_state = "turn left"
-            msg.angular.z = self.turning_speed_wf_fast
-        
-        elif self.leftfront_dist < d and self.front_dist > d and self.rightfront_dist < d and not right_covered:
-            self.wall_following_state = "search for wall"
-            msg.linear.x = self.forward_speed
-            msg.angular.z = -self.turning_speed_wf_slow # turn right to find wall
             
         else:
             self.wall_following_state = "turn left"
