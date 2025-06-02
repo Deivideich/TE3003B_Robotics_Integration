@@ -203,6 +203,9 @@ class BugController(Node):
         # Set the goal index to 0
         self.goal_idx = 0
         
+        self.go_to_goal_state = "adjust heading"
+        
+        
     def scan_callback(self, msg):
         """
         This method gets called every time a LaserScan message is 
@@ -361,6 +364,7 @@ class BugController(Node):
             else:           
                 # Change the state
                 self.go_to_goal_state = "goal achieved"
+                self.get_logger().info(f"Goal {self.goal_idx} achieved!")
                 msg = Twist()
                 msg.linear.x = 0.0
                 msg.linear.y = 0.0
@@ -370,13 +374,6 @@ class BugController(Node):
                 msg.angular.z = 0.0
                 # Command the robot to stop
                 self.publisher_.publish(msg)
-        
-        # Goal achieved         
-        elif (self.go_to_goal_state == "goal achieved"):
-                
-            self.get_logger().info('Goal achieved! X:%f Y:%f' % (
-                self.goal_x_coordinates[self.goal_idx],
-                self.goal_y_coordinates[self.goal_idx]))
         
         else:
             pass
@@ -468,7 +465,7 @@ class BugController(Node):
         if self.front_dist > d and self.rightfront_dist > d and not right_covered:
             self.wall_following_state = "search for wall"
             msg.linear.x = self.forward_speed
-            msg.angular.z = -self.turning_speed_wf_slow # turn right to find wall
+            msg.angular.z = -self.turning_speed_wf_fast # turn right to find wall
             
         elif (self.front_dist > d and (self.rightfront_dist < d or right_covered)):
             if (self.rightfront_dist < self.dist_too_close_to_wall or self.right_dist < self.dist_too_close_to_wall):
@@ -491,28 +488,8 @@ class BugController(Node):
         
     def bug0(self):
     
-        # Each time we start towards a new goal, we need to calculate the start-goal line
-        if self.start_goal_line_calculated == False:
-        
-            # Make sure go to goal mode is set.
-            self.robot_mode = "go to goal mode"            
-
-            self.start_goal_line_xstart = self.current_x
-            self.start_goal_line_xgoal = self.goal_x_coordinates[self.goal_idx]
-            self.start_goal_line_ystart = self.current_y
-            self.start_goal_line_ygoal = self.goal_y_coordinates[self.goal_idx]
-            
-            # Calculate the slope of the start-goal line m
-            self.start_goal_line_slope_m = (
-                (self.start_goal_line_ygoal - self.start_goal_line_ystart) / (
-                self.start_goal_line_xgoal - self.start_goal_line_xstart))
-            
-            # Solve for the intercept b
-            self.start_goal_line_y_intercept = self.start_goal_line_ygoal - (
-                    self.start_goal_line_slope_m * self.start_goal_line_xgoal) 
-            
-            # We have successfully calculated the start-goal line
-            self.start_goal_line_calculated = True
+        if self.go_to_goal_state == "goal achieved":
+            return
             
         if self.robot_mode == "go to goal mode":
             self.get_logger().info('Going to goal...')
