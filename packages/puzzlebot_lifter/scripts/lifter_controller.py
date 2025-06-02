@@ -86,17 +86,17 @@ class LifterNode(Node):
             return
 
     # Control normal (sin sobreimpulso)
-    if self.current_status == self.ARRIBA:
-        self.dir_line.set_value(0)  # Dirección: arriba
-        self.en_line.set_value(1)   # Motor ON
-        self.get_logger().info("Subiendo...")
-    elif self.current_status == self.ABAJO:
-        self.dir_line.set_value(1)  # Dirección: abajo
-        self.en_line.set_value(1)   # Motor ON
-        self.get_logger().info("Bajando...")
-    else:
-        self.en_line.set_value(0)   # Motor OFF
-        self.get_logger().info("Detenido.")
+        if self.current_status == self.ARRIBA:
+            self.dir_line.set_value(0)  # Dirección: arriba
+            self.en_line.set_value(1)   # Motor ON
+            self.get_logger().info("Subiendo...")
+        elif self.current_status == self.ABAJO:
+            self.dir_line.set_value(1)  # Dirección: abajo
+            self.en_line.set_value(1)   # Motor ON
+            self.get_logger().info("Bajando...")
+        else:
+            self.en_line.set_value(0)   # Motor OFF
+            self.get_logger().info("Detenido.")
 
     def __del__(self):
         """Liberar GPIO al destruir el nodo."""
