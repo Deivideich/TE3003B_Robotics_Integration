@@ -18,6 +18,7 @@
 #include <thread>
 #include <vector>
 #include <cmath>
+#include <unordered_map>
 
 using std::placeholders::_1;
 using namespace std::chrono_literals;
@@ -32,7 +33,8 @@ public:
     kP_ = this->declare_parameter<float>("kP", 0.2);
     kI_ = this->declare_parameter<float>("kI", 0.2);
     kD_ = this->declare_parameter<float>("kD", 0.2);
-    usingBugAlgorithm_ = this->declare_parameter<bool>("usingBugAlgorithm", true);
+    usingBugAlgorithm_ = this->declare_parameter<bool>("usingBugAlgorithm", false);
+    usingMCLPose_ = this->declare_parameter<bool>("usingMCLPose", true);
   }
 
   void get_parameters(){
@@ -43,6 +45,7 @@ public:
     kI_ = this->get_parameter("kI").as_double();
     kD_ = this->get_parameter("kD").as_double();
     usingBugAlgorithm_ = this->get_parameter("usingBugAlgorithm").as_bool();
+    usingMCLPose_ = this->get_parameter("usingMCLPose").as_bool();
   }
 
   void setup(){
@@ -68,7 +71,7 @@ public:
 
     planner_client_ = this->create_client<puzzlebot_interfaces::srv::PlanPath>("plan_path", rmw_qos_profile_services_default, client_cb_group_);
 
-    curr_pose_listener_ = this->create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>("/mcl_pose", 10, std::bind(&ControllerNode::poseCallback, this, _1)); 
+    curr_pose_listener_ = this->create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>(pose_topics[usingMCLPose_], 10, std::bind(&ControllerNode::poseCallback, this, _1)); 
     goal_listener_ = this->create_subscription<geometry_msgs::msg::PoseStamped>("/goal_pose", 10, std::bind(&ControllerNode::goalCallback, this, _1)); 
     local_map_listener_ = this->create_subscription<nav_msgs::msg::OccupancyGrid>("/local_map", 10, std::bind(&ControllerNode::localMapCallback, this, _1));
 
@@ -211,6 +214,8 @@ private:
   bool needs_planning_ = true;
   bool bug_mode_active_ = false;
   bool usingBugAlgorithm_;
+  bool usingMCLPose_;
+  std::unordered_map<bool,std::string> pose_topics = {{false, "/kalman_pose"}, {true, "/mcl_pose"}};
 
   std::unique_ptr<puzzlebot_controllers::controllers::ControllerInterface> controller_;
   std::unique_ptr<puzzlebot_controllers::controllers::Bug2Controller> bug_controller_;

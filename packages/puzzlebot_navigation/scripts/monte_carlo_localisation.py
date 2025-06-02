@@ -232,7 +232,8 @@ class MCLNode(Node):
     
     def scan_callback(self, msg):
         scan_msg = msg
-        # scan_msg.header.stamp = self.get_clock().now().to_msg()
+        if self.sim:
+            scan_msg.header.stamp = self.get_clock().now().to_msg()
         scan_msg.angle_increment = scan_msg.angle_increment * self.scan_step
         scan_msg.ranges = scan_msg.ranges[::self.scan_step]
         scan_msg.intensities = scan_msg.intensities[::self.scan_step] if scan_msg.intensities else []
@@ -247,6 +248,7 @@ class MCLNode(Node):
         if not self.sim:
             self.scan.angle_min = scan_msg.angle_min + 3.14
             self.scan.angle_max = scan_msg.angle_max + 3.14
+
 
     def odom_callback(self, msg):
         self.odom = msg
@@ -548,7 +550,7 @@ class MCLNode(Node):
                 self.resample_particles()
                 self.predictionCounter = 0
 
-        # self.publish_particles()
+        self.publish_particles()
         self.broadcast_transform()
         self.publish_estimated_pose()   
 
