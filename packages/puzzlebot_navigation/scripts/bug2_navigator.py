@@ -22,24 +22,14 @@ import tf2_ros
 import numpy as np 
 
 class BugController(Node):
-    """
-    Create a Placeholder Controller class, which is a subclass of the Node 
-    class for ROS2.
-    """
-
+    
     def __init__(self):
-        """
-        Class constructor to set up the node
-        """
-        ####### INITIALIZE ROS PUBLISHERS AND SUBSCRIBERS##############
-        # Initiate the Node class's constructor and give it a name
         super().__init__('BugController')
         
         self.tf_buffer = tf2_ros.Buffer()
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
         qos = rclpy.qos.QoSProfile(depth=10)
         qos.reliability = rclpy.qos.QoSReliabilityPolicy.BEST_EFFORT
-        # self.create_subscription(Odometry, '/odom', self.odom_callback, qos)
         self.create_subscription(LaserScan, '/scan', self.scan_callback, qos)
         self.create_subscription(PoseWithCovarianceStamped, "/mcl_pose", self.robot_pose_callback, qos)
         
@@ -49,12 +39,6 @@ class BugController(Node):
             self.pose_received,
             10)
         
-        # Create a publisher
-        # This node publishes the desired linear and angular velocity 
-        # of the robot (in the robot chassis coordinate frame) to the 
-        # /en613/cmd_vel topic. Using the diff_drive
-        # plugin enables the basic_robot model to read this 
-        # /end613/cmd_vel topic and execute the motion accordingly.
         self.publisher_ = self.create_publisher(
             Twist, 
             '/cmd_vel', 
@@ -67,91 +51,79 @@ class BugController(Node):
         self.front_dist = 999999.9 # Front
         self.rightfront_dist = 999999.9 # Right-front
         self.right_dist = 999999.9 # Right
- 
+
         ################### ROBOT CONTROL PARAMETERS ##################
-         
+        
         # Maximum forward speed of the robot in meters per second
-        # Any faster than this and the robot risks falling over.
-        self.forward_speed = 0.15 
-         
+        self.forward_speed = 0.05 
+        
         # Current position and orientation of the robot in the global 
         # reference frame
         self.current_x = 0.0
         self.current_y = 0.0
         self.current_yaw = 0.0
-         
+        
         # By changing the value of self.robot_mode, you can alter what
         # the robot will do when the program is launched.
         #   "obstacle avoidance mode": Robot will avoid obstacles
         #   "go to goal mode": Robot will head to an x,y coordinate   
         #   "wall following mode": Robot will follow a wall 
         self.robot_mode = "go to goal mode"
-         
-        ############# OBSTACLE AVOIDANCE MODE PARAMETERS ##############
-         
-        # Obstacle detection distance threshold
-        self.dist_thresh_obs = 0.2 # in meters
-         
+        
         # Maximum left-turning speed    
         self.turning_speed = 0.25 # rad/s
- 
+
         ############# GO TO GOAL MODE PARAMETERS ######################
         # Finite states for the go to goal mode
         #   "adjust heading": Orient towards a goal x, y coordinate
         #   "go straight": Go straight towards goal x, y coordinate
         #   "goal achieved": Reached goal x, y coordinate
         self.go_to_goal_state = "adjust heading"
-         
+        
         # List the goal destinations
         # We create a list of the (x,y) coordinate goals
         self.goal_x_coordinates = False # [ 0.0, 3.0, 0.0, -1.5, -1.5,  4.5, 0.0]
         self.goal_y_coordinates = False # [-4.0, 1.0, 1.5,  1.0, -3.0, -4.0, 0.0]
-         
+        
         # Keep track of which goal we're headed towards
         self.goal_idx = 0
-         
+        
         # Keep track of when we've reached the end of the goal list
         self.goal_max_idx =  None # len(self.goal_x_coordinates) - 1 
-         
+        
         # +/- 2.0 degrees of precision
         self.yaw_precision = 2.0 * (math.pi / 180) 
-         
+        
         # How quickly we need to turn when we need to make a heading
         # adjustment (rad/s)
         self.turning_speed_yaw_adjustment = 0.25
-         
+        
         # Need to get within +/- 0.2 meter (20 cm) of (x,y) goal
         self.dist_precision = 0.2
- 
+
         ############# WALL FOLLOWING MODE PARAMETERS ##################     
         # Finite states for the wall following mode
         #   "turn left": Robot turns towards the left
         #   "search for wall": Robot tries to locate the wall       
         #   "follow wall": Robot moves parallel to the wall
         self.wall_following_state = "turn left"
-         
+        
         # Set turning speeds (to the left) in rad/s 
-        # These values were determined by trial and error.
         self.turning_speed_wf_fast = 0.4  # Fast turn
-        self.turning_speed_wf_slow = 0.2 # Slow turn
-         
+        self.turning_speed_wf_slow = 0.3 # Slow turn
+        
         # Wall following distance threshold.
         # We want to try to keep within this distance from the wall.
-        self.dist_thresh_wf = 0.45 # in meters  
-         
+        self.dist_thresh_wf = 0.4 # in meters  
+        
         # We don't want to get too close to the wall though.
-        self.dist_too_close_to_wall = 0.3 # in meters
-         
-        ################### BUG2 PARAMETERS ###########################
-         
-        # Bug2 Algorithm Switch
-        # Can turn "ON" or "OFF" depending on if you want to run Bug2
-        # Motion Planning Algorithm
-        self.bug2_switch = "ON"
-         
+        self.dist_too_close_to_wall = 0.15 # in meters
+        
+        self.bug0_switch = "ON"
+        
         # Start-Goal Line Calculated?
         self.start_goal_line_calculated = False
-         
+        
         # Start-Goal Line Parameters
         self.start_goal_line_slope_m = 0
         self.start_goal_line_y_intercept = 0
@@ -159,15 +131,15 @@ class BugController(Node):
         self.start_goal_line_xgoal = 0
         self.start_goal_line_ystart = 0
         self.start_goal_line_ygoal = 0
-         
+        
         # Anything less than this distance means we have encountered
         # a wall. Value determined through trial and error.
-        self.dist_thresh_bug2 = 0.25
+        self.dist_thresh_bug0 = 0.25
         
         # Leave point must be within +/- 0.1m of the start-goal line
         # in order to go from wall following mode to go to goal mode
         self.distance_to_start_goal_line_precision = 0.15
-         
+        
         # Used to record the (x,y) coordinate where the robot hit
         # a wall.
         self.hit_point_x = 0
@@ -236,23 +208,17 @@ class BugController(Node):
         This method gets called every time a LaserScan message is 
         received on the /en613/scan ROS topic   
         """
-        # Read the laser scan data that indicates distances
-        # to obstacles (e.g. wall) in meters and extract
-        # 5 distinct laser readings to work with.
-        # Each reading is separated by 45 degrees.
-        # Assumes 181 laser readings, separated by 1 degree. 
         # (e.g. -90 degrees to 90 degrees....0 to 180 degrees)
         
-        range = 2
+        range = 6
         
         self.right_dist = np.mean(msg.ranges[(90-range):(90+range)]) # Left
         self.rightfront_dist = np.mean(msg.ranges[(135-range):(135+range)])
+        self.rightback_dist = np.mean(msg.ranges[(45-range):(45+range)]) # Right
         self.front_dist = np.mean(msg.ranges[(180-range):(180+range)]) # Front
         self.leftfront_dist = np.mean(msg.ranges[(225-range):(225+range)])
         self.left_dist = np.mean(msg.ranges[(270-range):(270+range)])
-        
-        # The total number of laser rays. Used for testing.
-        #number_of_laser_rays = str(len(msg.ranges))        
+        self.leftback_dist = np.mean(msg.ranges[(315-range):(315+range)]) # Left-back
         
         # Print the distance values (in meters) for testing
         # self.get_logger().info('L:%f LF:%f F:%f RF:%f R:%f' % (
@@ -266,47 +232,6 @@ class BugController(Node):
         
         if self.goal_x_coordinates == False and self.goal_y_coordinates == False:
             return
-        way_to_goal_free = self.is_way_to_goal_free()
-        print(f'Way to goal free: {way_to_goal_free}')
-        
-        
-    def odom_callback(self, msg):
-        """
-        Extract the position and orientation data. 
-        This callback is called each time
-        a new message is received on the '/en613/state_est' topic
-        """
-        # Update the current estimated state in the global reference frame
-        odom = msg
-        pos = odom.pose.pose.position
-        ori = odom.pose.pose.orientation
-        _, _, yaw = tf_transformations.euler_from_quaternion([ori.x, ori.y, ori.z, ori.w])
-        self.current_x = pos.x
-        self.current_y = pos.y
-        self.current_yaw = yaw
-        
-        # Wait until we have received some goal destinations.
-        if self.goal_x_coordinates == False and self.goal_y_coordinates == False:
-            return
-        
-        # Print the pose of the robot
-        # Used for testing
-        #self.get_logger().info('X:%f Y:%f YAW:%f' % (
-        #   self.current_x,
-        #   self.current_y,
-        #   np.rad2deg(self.current_yaw)))  # Goes from -pi to pi 
-        
-        # See if the Bug2 algorithm is activated. If yes, call bug2()
-        if self.bug2_switch == "ON":
-            self.bug2()
-        else:
-            
-            if self.robot_mode == "go to goal mode":
-                self.go_to_goal()
-            elif self.robot_mode == "wall following mode":
-                self.follow_wall()
-            else:
-                pass # Do nothing      
             
     def robot_pose_callback(self, msg):
         """
@@ -327,16 +252,9 @@ class BugController(Node):
         if self.goal_x_coordinates == False and self.goal_y_coordinates == False:
             return
         
-        # Print the pose of the robot
-        # Used for testing
-        #self.get_logger().info('X:%f Y:%f YAW:%f' % (
-        #   self.current_x,
-        #   self.current_y,
-        #   np.rad2deg(self.current_yaw)))  # Goes from -pi to pi 
-        
-        # See if the Bug2 algorithm is activated. If yes, call bug2()
-        if self.bug2_switch == "ON":
-            self.bug2()
+        # See if the bug0 algorithm is activated. If yes, call bug0()
+        if self.bug0_switch == "ON":
+            self.bug0()
         else:
             
             if self.robot_mode == "go to goal mode":
@@ -344,7 +262,7 @@ class BugController(Node):
             elif self.robot_mode == "wall following mode":
                 self.follow_wall()
             else:
-                pass # Do nothing      
+                pass 
                             
     def go_to_goal(self):
         """
@@ -359,37 +277,17 @@ class BugController(Node):
         msg.angular.y = 0.0
         msg.angular.z = 0.0
         
-        # If Bug2 algorithm is activated
-        if self.bug2_switch == "ON":
+        # If bug0 algorithm is activated
+        if self.bug0_switch == "ON":
         
             # If the wall is in the way
-            d = self.dist_thresh_bug2
+            d = self.dist_thresh_bug0
             if (    self.leftfront_dist < d or
                 self.front_dist < d or
                 self.rightfront_dist < d):
             
                 # Change the mode to wall following mode.
                 self.robot_mode = "wall following mode"
-                
-                # Record the hit point  
-                self.hit_point_x = self.current_x
-                self.hit_point_y = self.current_y
-                
-                # Record the distance to the goal from the 
-                # hit point
-                self.distance_to_goal_from_hit_point = (
-                    math.sqrt((
-                    pow(self.goal_x_coordinates[self.goal_idx] - self.hit_point_x, 2)) + (
-                    pow(self.goal_y_coordinates[self.goal_idx] - self.hit_point_y, 2))))    
-                    
-                # Make a hard left to begin following wall
-                msg.angular.z = self.turning_speed_wf_fast
-                        
-                # Send command to the robot
-                self.publisher_.publish(msg)
-                
-                # Exit this function        
-                return
             
         # Fix the heading       
         if (self.go_to_goal_state == "adjust heading"):
@@ -399,6 +297,12 @@ class BugController(Node):
                     self.goal_x_coordinates[self.goal_idx] - self.current_x)
             
             yaw_error = desired_yaw - self.current_yaw
+            
+            # Normalize yaw_error to [-pi, pi] to ensure shortest angular path
+            while yaw_error > math.pi:
+                yaw_error -= 2 * math.pi
+            while yaw_error < -math.pi:
+                yaw_error += 2 * math.pi
             
             if math.fabs(yaw_error) > self.yaw_precision:
             
@@ -434,7 +338,7 @@ class BugController(Node):
             if position_error > self.dist_precision:
 
                 # Move straight ahead
-                msg.linear.x = self.forward_speed
+                msg.linear.x = self.forward_speed * 1.5
                     
                 # Command the robot to move
                 self.publisher_.publish(msg)
@@ -457,7 +361,13 @@ class BugController(Node):
             else:           
                 # Change the state
                 self.go_to_goal_state = "goal achieved"
-                
+                msg = Twist()
+                msg.linear.x = 0.0
+                msg.linear.y = 0.0
+                msg.linear.z = 0.0
+                msg.angular.x = 0.0
+                msg.angular.y = 0.0
+                msg.angular.z = 0.0
                 # Command the robot to stop
                 self.publisher_.publish(msg)
         
@@ -467,24 +377,6 @@ class BugController(Node):
             self.get_logger().info('Goal achieved! X:%f Y:%f' % (
                 self.goal_x_coordinates[self.goal_idx],
                 self.goal_y_coordinates[self.goal_idx]))
-            
-            # Get the next goal
-            self.goal_idx = self.goal_idx + 1
-        
-            # Do we have any more goals left?           
-            # If we have no more goals left, just stop
-            if (self.goal_idx > self.goal_max_idx):
-                self.get_logger().info('Congratulations! All goals have been achieved.')
-                while True:
-                    pass
-
-            # Let's achieve our next goal
-            else: 
-                # Change the state
-                self.go_to_goal_state = "adjust heading"               
-
-            # We need to recalculate the start-goal line if Bug2 is running
-            self.start_goal_line_calculated = False            
         
         else:
             pass
@@ -516,28 +408,23 @@ class BugController(Node):
         # ensure between 0 and 360 degrees
         start_index = start_index % 360
         end_index = end_index % 360
-        self.get_logger().info(f'Checking from index {start_index} to {end_index}')
         # Check the laser scan readings within the specified range
         
         # if the start index is greater than the end index, it means we need to wrap around
         if start_index > end_index:
             # Check the readings from start_index to 359 and from 0 to end_index
             for i in range(start_index, 360):
-                if self.curr_scan.ranges[i] < self.dist_thresh_bug2:
-                    self.get_logger().info('Obstacle detected in the way to the goal.')
+                if self.curr_scan.ranges[i] < self.dist_thresh_bug0:
                     return False
             for i in range(0, end_index + 1):
-                if self.curr_scan.ranges[i] < self.dist_thresh_bug2:
-                    self.get_logger().info('Obstacle detected in the way to the goal.')
+                if self.curr_scan.ranges[i] < self.dist_thresh_bug0:
                     return False
-        
-        for i in range(start_index, end_index + 1):
-            # If any reading is less than the distance threshold, return False
-            if self.curr_scan.ranges[i] < self.dist_thresh_bug2:
-                self.get_logger().info('Obstacle detected in the way to the goal.')
-                return False
-        # If no readings are less than the distance threshold, return True
-        self.get_logger().info('Way to the goal is free.')
+        else:
+            for i in range(start_index, end_index + 1):
+                # If any reading is less than the distance threshold, return False
+                if self.curr_scan.ranges[i] < self.dist_thresh_bug0:
+                    return False
+                
         return True
         
     
@@ -554,62 +441,31 @@ class BugController(Node):
         msg.angular.y = 0.0
         msg.angular.z = 0.0        
 
-        if self.bug2_switch == "ON":
-        
-            # # Calculate the point on the start-goal 
-            # # line that is closest to the current position
-            # x_start_goal_line = self.current_x
-            # y_start_goal_line = (
-            #     self.start_goal_line_slope_m * (
-            #     x_start_goal_line)) + (
-            #     self.start_goal_line_y_intercept)
-        
-            # # Calculate the distance between current position 
-            # # and the start-goal line
-            # distance_to_start_goal_line = math.sqrt(pow(
-            #             x_start_goal_line - self.current_x, 2) + pow(
-            #             y_start_goal_line - self.current_y, 2)) 
+        if self.bug0_switch == "ON":
             
-            # # If we hit the start-goal line again               
-            # if distance_to_start_goal_line < self.distance_to_start_goal_line_precision:
-            
-            #     # Determine if we need to leave the wall and change the mode
-            #     # to 'go to goal'
-            #     # Let this point be the leave point
-            #     self.leave_point_x = self.current_x
-            #     self.leave_point_y = self.current_y
-
-            #     # Record the distance to the goal from the leave point
-            #     self.distance_to_goal_from_leave_point = math.sqrt(
-            #         pow(self.goal_x_coordinates[self.goal_idx] 
-            #         - self.leave_point_x, 2)
-            #         + pow(self.goal_y_coordinates[self.goal_idx]  
-            #         - self.leave_point_y, 2)) 
-        
-            #     # Is the leave point closer to the goal than the hit point?
-            #     # If yes, go to goal. 
-            #     diff = self.distance_to_goal_from_hit_point - self.distance_to_goal_from_leave_point
-            #     if diff > self.leave_point_to_hit_point_diff:
-                        
-            #         # Change the mode. Go to goal.
-            #         self.robot_mode = "go to goal mode"
-            #     # Exit this function
-            #     self.get_logger().info(f"Leaving wall")
-            #     return             
             # bug0
             way_to_goal_free = self.is_way_to_goal_free()
-            if self.wall_following_state == "look for wall":
-                # If no wall seen, immediately go for goal
+            if way_to_goal_free:
+                # If no OBSTACLE seen, immediately go for goal
                 # Change the mode to go to goal
                 self.robot_mode = "go to goal mode"
-                self.get_logger().info(f"go to goal mode")
+                self.get_logger().info(f"Way to goal free: {way_to_goal_free}")
+                return
         
         # Logic for following the wall
         # >d means no wall detected by that laser beam
         # <d means an wall was detected by that laser beam
+        
         d = self.dist_thresh_wf
         
-        if self.leftfront_dist > d and self.front_dist > d and self.rightfront_dist > d:
+        left_covered = self.left_dist < d # or self.leftback_dist < d
+        leftfront_covered = self.leftfront_dist < d
+        front_covered = self.front_dist < d
+        rightfront_covered = self.rightfront_dist < d
+        right_covered = self.right_dist < d # or self.rightback_dist < d
+        
+        
+        if self.leftfront_dist > d and self.front_dist > d and self.rightfront_dist > d and not right_covered:
             self.wall_following_state = "search for wall"
             msg.linear.x = self.forward_speed
             msg.angular.z = -self.turning_speed_wf_slow # turn right to find wall
@@ -619,18 +475,18 @@ class BugController(Node):
             msg.angular.z = self.turning_speed_wf_fast
             
             
-        elif (self.leftfront_dist > d and self.front_dist > d and self.rightfront_dist < d):
-            if (self.rightfront_dist < self.dist_too_close_to_wall):
+        elif (self.leftfront_dist > d and self.front_dist > d and (self.rightfront_dist < d or right_covered)):
+            if (self.rightfront_dist < self.dist_too_close_to_wall or self.right_dist < self.dist_too_close_to_wall):
                 # Getting too close to the wall
                 self.wall_following_state = "turn left"
-                msg.linear.x = self.forward_speed
-                msg.angular.z = self.turning_speed_wf_fast      
+                msg.linear.x = self.forward_speed * 0.5
+                msg.angular.z = self.turning_speed_wf_slow      
             else:           
                 # Go straight ahead
                 self.wall_following_state = "follow wall" 
-                msg.linear.x = self.forward_speed * 0.5   
+                msg.linear.x = self.forward_speed
                                     
-        elif self.leftfront_dist < d and self.front_dist > d and self.rightfront_dist > d:
+        elif self.leftfront_dist < d and self.front_dist > d and self.rightfront_dist > d and not right_covered:
             self.wall_following_state = "search for wall"
             msg.linear.x = self.forward_speed
             msg.angular.z = -self.turning_speed_wf_slow # turn right to find wall
@@ -646,22 +502,22 @@ class BugController(Node):
         elif self.leftfront_dist < d and self.front_dist < d and self.rightfront_dist < d:
             self.wall_following_state = "turn left"
             msg.angular.z = self.turning_speed_wf_fast
-            
-        elif self.leftfront_dist < d and self.front_dist > d and self.rightfront_dist < d:
+        
+        elif self.leftfront_dist < d and self.front_dist > d and self.rightfront_dist < d and not right_covered:
             self.wall_following_state = "search for wall"
             msg.linear.x = self.forward_speed
             msg.angular.z = -self.turning_speed_wf_slow # turn right to find wall
             
         else:
-            pass
+            self.wall_following_state = "turn left"
+            msg.angular.z = self.turning_speed_wf_fast
         
         self.get_logger().info(f"Wall Following State: {self.wall_following_state}")
 
-        # Send velocity command to the robot
         self.publisher_.publish(msg)    
-         
-    def bug2(self):
-     
+        
+    def bug0(self):
+    
         # Each time we start towards a new goal, we need to calculate the start-goal line
         if self.start_goal_line_calculated == False:
         
@@ -692,25 +548,12 @@ class BugController(Node):
             self.follow_wall()
         
 def main(args=None):
- 
-    # Initialize rclpy library
+
     rclpy.init(args=args)
-     
-    # Create the node
     controller = BugController()
- 
-    # Spin the node so the callback function is called
-    # Pull messages from any topics this node is subscribed to
-    # Publish any pending messages to the topics
     rclpy.spin(controller)
- 
-    # Destroy the node explicitly
-    # (optional - otherwise it will be done automatically
-    # when the garbage collector destroys the node object)
     controller.destroy_node()
-     
-    # Shutdown the ROS client library for Python
     rclpy.shutdown()
- 
+
 if __name__ == '__main__':
     main()
