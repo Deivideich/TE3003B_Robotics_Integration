@@ -4,6 +4,7 @@
 #include <nav_msgs/msg/path.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <nav_msgs/msg/occupancy_grid.hpp>
+#include <std_msgs/msg/string.hpp>
 #include "puzzlebot_controller/controllers/controller_interface.hpp"
 #include "puzzlebot_controller/controllers/pure_pursuit.hpp"
 #include "puzzlebot_controller/controllers/pid_controller.hpp"
@@ -26,7 +27,6 @@
 #include <tf2_ros/transform_listener.h>
 #include <tf2_ros/buffer.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>  // for tf2::doTransform
-#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 #include <tf2/utils.h>  // ✅ This is the key one
 
 using std::placeholders::_1;
@@ -47,7 +47,7 @@ public:
     // Declare params
     controller_type_ = this->declare_parameter<std::string>("controller_type", "pure_pursuit");
     usingBugAlgorithm_ = this->declare_parameter<bool>("usingBugAlgorithm", true);
-    delta_angle_ = this->declare_parameter<float>("delta_angle", float(M_PI / 32));
+    delta_angle_ = this->declare_parameter<float>("delta_angle", float(M_PI / 16));
     deviation_threshold_ = this->declare_parameter<float>("deviation_threshold", 0.75);
     
     linear_speed_ = this->declare_parameter<float>("linear_speed", 0.1);
@@ -86,7 +86,7 @@ public:
     }
 
     if (usingBugAlgorithm_){
-      bug_controller_ = std::make_unique<puzzlebot_controllers::bug_controllers::Bug0Controller>(linear_speed_, 0.08, 0.15);
+      bug_controller_ = std::make_unique<puzzlebot_controllers::bug_controllers::Bug0Controller>(linear_speed_, 0.1, 0.5, delta_angle_, 2);
     }
 
     client_cb_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
@@ -100,7 +100,8 @@ public:
     local_map_listener_ = this->create_subscription<nav_msgs::msg::OccupancyGrid>("/local_map", 10, std::bind(&ControllerNode::localMapCallback, this, _1));
     merged_map_listener_ = this->create_subscription<nav_msgs::msg::OccupancyGrid>("/merged_map", 10, std::bind(&ControllerNode::mergedMapCallback, this, _1));
     cmd_pub_ = this->create_publisher<geometry_msgs::msg::Twist>("/cmd_vel", 10);
-
+    control_state_pub_ = this->create_publisher<std_msgs::msg::String>("/controller_state", 10);
+    control_point_pub_ = this->create_publisher<geometry_msgs::msg::PoseStamped>("/control_point", 10);
     timer_ = this->create_wall_timer(100ms, std::bind(&ControllerNode::timerCallback, this), timer_cb_group_);
 
     RCLCPP_INFO(this->get_logger(), "Waiting for planning service");
@@ -140,6 +141,30 @@ private:
     local_map_ = msg;
     if (usingBugAlgorithm_) bug_controller_->updateMap(local_map_);
   }
+
+  geometry_msgs::msg::PoseStamped transfromToBaselink(const geometry_msgs::msg::PoseStamped::SharedPtr pose, bool overwriteStamp = false){
+    geometry_msgs::msg::PoseStamped result;
+    if (!pose) {
+      RCLCPP_WARN(this->get_logger(), "Input pose is null");
+      return result;
+    } else if(overwriteStamp){
+      pose->header.stamp = local_map_->header.stamp;
+    }
+
+    try {
+      // Wait for transform to be available
+      std::string target_frame = "base_link";
+      if (!tf_buffer_->canTransform(target_frame, pose->header.frame_id, tf2::TimePointZero, tf2::durationFromSec(1))) {
+        RCLCPP_WARN(this->get_logger(), "Transform from %s to %s not available", pose->header.frame_id.c_str(), target_frame.c_str());
+        return result;
+      }
+      tf_buffer_->transform(*pose, result, target_frame, tf2::durationFromSec(1));
+    } catch (const tf2::TransformException& ex) {
+      RCLCPP_WARN(this->get_logger(), "Transform failed: %s", ex.what());
+    }
+    return result;
+  }
+                       
 
   double angle_diff(double a, double b){
     double diff = a - b;
@@ -226,68 +251,62 @@ private:
   //     RCLCPP_INFO(this->get_logger(), "Obstacle found using BUG2 controller");
   //     return false;
   // }
-  bool        (const geometry_msgs::msg::PoseStamped& curr_pose, 
+  bool isPathBlocked (const geometry_msgs::msg::PoseStamped& curr_pose, 
                    const geometry_msgs::msg::PoseStamped& desired_pose,
                    double angle_delta) 
-{
-    if (!local_map_) return false;
+  {
+      if (!local_map_) return false;
 
-    // Transform desired_pose into base_link frame
-    geometry_msgs::msg::PoseStamped desired_in_base;
-    try {
-        tf_buffer_->transform(desired_pose, desired_in_base, "base_link", tf2::durationFromSec(0.1));
-    } catch (const tf2::TransformException& ex) {
-        RCLCPP_WARN(this->get_logger(), "Transform failed: %s", ex.what());
-        return false;
-    }
+      // Transform desired_pose into base_link frame
+      // geometry_msgs::msg::PoseStamped desired_pose = transfromToBaselink(desired_pose, true);;
+      
+      // Compute direction and check distance in base_link frame
+      double dx = desired_pose.pose.position.x;
+      double dy = desired_pose.pose.position.y;
+      double desired_angle = std::atan2(dy, dx);
+      double check_distance = 0.25;//std::hypot(dx, dy);
 
-    // Compute direction and check distance in base_link frame
-    double dx = desired_in_base.pose.position.x;
-    double dy = desired_in_base.pose.position.y;
-    double desired_angle = std::atan2(dy, dx);
-    double check_distance = std::hypot(dx, dy);
+      double min_range = desired_angle - angle_delta;
+      double max_range = desired_angle + angle_delta;
+      int num_rays = 15;
 
-    double min_range = desired_angle - angle_delta;
-    double max_range = desired_angle + angle_delta;
-    int num_rays = 15;
+      int width = local_map_->info.width;
+      int height = local_map_->info.height;
+      double resolution = local_map_->info.resolution;
 
-    int width = local_map_->info.width;
-    int height = local_map_->info.height;
-    double resolution = local_map_->info.resolution;
+      // Robot assumed at center of local map
+      int x0 = width / 2;
+      int y0 = height / 2;
 
-    // Robot assumed at center of local map
-    int x0 = width / 2;
-    int y0 = height / 2;
+      for (int i = 0; i < num_rays; ++i) {
+          double angle = min_range + i * (max_range - min_range) / (num_rays - 1);
+          double end_x = check_distance * std::cos(angle);
+          double end_y = check_distance * std::sin(angle);
 
-    for (int i = 0; i < num_rays; ++i) {
-        double angle = min_range + i * (max_range - min_range) / (num_rays - 1);
-        double end_x = check_distance * std::cos(angle);
-        double end_y = check_distance * std::sin(angle);
+          int x1 = static_cast<int>(x0 + end_x / resolution);
+          int y1 = static_cast<int>(y0 + end_y / resolution);
 
-        int x1 = static_cast<int>(x0 + end_x / resolution);
-        int y1 = static_cast<int>(y0 + end_y / resolution);
+          // Bresenham's algorithm
+          int dx = abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
+          int dy = -abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
+          int err = dx + dy, e2;
 
-        // Bresenham's algorithm
-        int dx = abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
-        int dy = -abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
-        int err = dx + dy, e2;
+          int cx = x0, cy = y0;
+          while (true) {
+              if (cx < 0 || cx >= width || cy < 0 || cy >= height) break;
+              int idx = cy * width + cx;
+              if (local_map_->data[idx] > 50) // Occupied threshold
+                  return true;
 
-        int cx = x0, cy = y0;
-        while (true) {
-            if (cx < 0 || cx >= width || cy < 0 || cy >= height) break;
-            int idx = cy * width + cx;
-            if (local_map_->data[idx] > 50) // Occupied threshold
-                return true;
+              if (cx == x1 && cy == y1) break;
+              e2 = 2 * err;
+              if (e2 >= dy) { err += dy; cx += sx; }
+              if (e2 <= dx) { err += dx; cy += sy; }
+          }
+      }
 
-            if (cx == x1 && cy == y1) break;
-            e2 = 2 * err;
-            if (e2 >= dy) { err += dy; cx += sx; }
-            if (e2 <= dx) { err += dx; cy += sy; }
-        }
-    }
-
-    return false;
-}
+      return false;
+  }
 
 
   // void activateBug2Mode() {
@@ -331,6 +350,35 @@ private:
   //   }
   // }
 
+  std_msgs::msg::String stateToString(ControllerStates state) {
+    auto message = std_msgs::msg::String();
+    switch (state) {
+      case ControllerStates::STOPPED: 
+        message.data = "STOPPED";
+        break;
+      case ControllerStates::GLOBAL_PLANNING: 
+        message.data = "GLOBAL_PLANNING";
+        break;
+      case ControllerStates::GLOBAL_CONTROLLER: 
+        message.data = "GLOBAL_CONTROLLER";
+        break;
+      case ControllerStates::OBSTACLE_FOUND: 
+        message.data = "OBSTACLE_FOUND";
+        break;
+      case ControllerStates::BUG2_PLANNING: 
+        message.data = "BUG2_PLANNING";
+        break;
+      case ControllerStates::BUG_CONTROLLER: 
+        message.data = "BUG_CONTROLLER";
+        break;
+      default: 
+        message.data = "UNKNOWN";
+        break;
+    }
+
+    return message;
+  } 
+
   void timerCallback(){
     geometry_msgs::msg::Twist::SharedPtr cmd = std::make_shared<geometry_msgs::msg::Twist>();
 
@@ -372,8 +420,8 @@ private:
         break;
       case ControllerStates::GLOBAL_CONTROLLER:
       {
-        const auto& target_pose = current_path_[controller_->getPathIndex()];
-        const auto& current_pose = *current_pose_;
+        const auto& target_pose = transfromToBaselink(std::make_shared<geometry_msgs::msg::PoseStamped>(current_path_[controller_->getPathIndex()]), true);
+        const auto& current_pose = transfromToBaselink(current_pose_);
 
         double dx = target_pose.pose.position.x - current_pose.pose.position.x;
         double dy = target_pose.pose.position.y - current_pose.pose.position.y;
@@ -433,15 +481,19 @@ private:
       case ControllerStates::BUG_CONTROLLER:
       {
         // const auto& target_pose = bug_current_path_[bug_controller_->getPathIndex()];
-        const auto& current_pose = *current_pose_;
+        const auto& goal_pose = transfromToBaselink(goal_pose_, true);
+        const auto& current_pose = transfromToBaselink(current_pose_, true);
 
         // // Check if there is obstacle within path
         // if (isPathBlocked(current_pose, target_pose, delta_angle_)){
         //   RCLCPP_WARN(this->get_logger(), "BUG2 Path is blocked.");
         //   controller_state_ = OBSTACLE_FOUND;
-        /*} else*/ if (bug_controller_->computeCommand(current_pose, cmd)) {
+        /*} else*/ if (bug_controller_->computeCommand(current_pose, goal_pose, cmd)) {
           RCLCPP_INFO(this->get_logger(), "Achieved better position with BUG2 algorithm, switching to global planning since obstacle has being avoided!");
           controller_state_ = GLOBAL_PLANNING;
+        } else {
+          auto control_pose = bug_controller_->getControlPose();
+          control_point_pub_->publish(control_pose);
         }
       }
         break;
@@ -450,6 +502,8 @@ private:
     }
 
     cmd_pub_->publish(*cmd);
+    control_state_pub_->publish(stateToString(controller_state_));
+
     
     // if (needs_planning_) {
     //   needs_planning_ = false;
@@ -493,6 +547,8 @@ private:
   rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr local_map_listener_;
   rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr merged_map_listener_;
   rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr cmd_pub_;
+  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr control_state_pub_;
+  rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr control_point_pub_;
   rclcpp::Client<puzzlebot_interfaces::srv::PlanPath>::SharedPtr planner_client_;
   // rclcpp::Client<puzzlebot_interfaces::srv::PlanPath>::SharedPtr bug_planner_client_;
   rclcpp::TimerBase::SharedPtr timer_;
