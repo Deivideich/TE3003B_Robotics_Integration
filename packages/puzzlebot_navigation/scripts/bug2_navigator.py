@@ -114,7 +114,7 @@ class BugController(Node):
         
         # Wall following distance threshold.
         # We want to try to keep within this distance from the wall.
-        self.dist_thresh_wf = 0.4 # in meters  
+        self.dist_thresh_wf = 0.35 # in meters  
         
         # We don't want to get too close to the wall though.
         self.dist_too_close_to_wall = 0.2 # in meters
