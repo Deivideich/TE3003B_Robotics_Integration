@@ -19,6 +19,7 @@ namespace puzzlebot_controllers
             private:
                 double lookahead_distance_;
                 double orientation_tolerance_;
+                bool orientation_correction_ = false;
             public:
                 PurePursuitController(double linear_speed, double angular_speed, double lookahead_distance, double orientation_tolerance);
 

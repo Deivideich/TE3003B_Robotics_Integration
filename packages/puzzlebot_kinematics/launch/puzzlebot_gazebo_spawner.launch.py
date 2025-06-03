@@ -128,25 +128,8 @@ def generate_launch_description():
             output="screen"
         ),
         
-        Node(
-            package="gazebo_ros",
-            executable="spawn_entity.py",
-            arguments=[
-                "-file", aruco_marker_path,
-                "-entity", "aruco_marker",
-                "-robot_namespace", "aruco_marker",
-                "-x", "1.0",  # X position
-                "-y", "1.0",  # Y position
-                "-z", "0.2",  # Z position
-                "-R", "0",    # Roll
-                "-P", "0",    # Pitch
-                "-Y", "0"     # Yaw
-            ],
-            output="screen"
-        ),
         
-        
-        TimerAction(
+TimerAction(
             period=5.0,
             actions=[
                 Node(
@@ -229,7 +212,7 @@ def generate_launch_description():
                 ),
             ]
         ),
-
+        
         # Optional RViz launch
         Node(
             condition=IfCondition(LaunchConfiguration("rviz")),

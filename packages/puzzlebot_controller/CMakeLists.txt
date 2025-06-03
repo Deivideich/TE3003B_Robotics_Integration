@@ -11,6 +11,7 @@ find_package(rclcpp REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(puzzlebot_interfaces REQUIRED)
 find_package(nav_msgs REQUIRED)
+find_package(std_msgs REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
@@ -20,6 +21,7 @@ find_package(angles REQUIRED)
 add_library(puzzlebot_controller_include SHARED
     src/include/pure_pursuit.cpp
     src/include/pid_controller.cpp
+    src/include/bug0_controller.cpp
 )
 target_include_directories(puzzlebot_controller_include PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -38,6 +40,7 @@ add_executable(controller_node src/controller_node.cpp)
 ament_target_dependencies(controller_node PUBLIC
     rclcpp
     nav_msgs
+    std_msgs
     geometry_msgs
     tf2
     puzzlebot_interfaces

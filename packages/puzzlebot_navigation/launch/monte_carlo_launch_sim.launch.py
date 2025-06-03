@@ -83,27 +83,27 @@ def generate_launch_description():
             description="Whether to use clustering in MCL algorithm"
         ),
     
-        # # State publisher
-        # Node(
-        #     package="robot_state_publisher",
-        #     executable="robot_state_publisher",
-        #     name="robot_state_publisher",
-        #     parameters=[{
-        #         "robot_description": ParameterValue(
-        #             Command([
-        #                 FindExecutable(name="xacro"), " ",
-        #                 LaunchConfiguration("model"), " ",
-        #                 "prefix:=", LaunchConfiguration("prefix"), " ",
-        #                 "use_gazebo_controllers:=", LaunchConfiguration("use_gazebo_controllers"),
-        #                 " ",
-        #                 "use_gazebo_odom:=", LaunchConfiguration("use_gazebo_odom"),
-        #                 " ",
-        #             ]),
-        #             value_type=str
-        #         )
-        #     }],
-        #     output="screen"
-        # ),
+        # State publisher
+        Node(
+            package="robot_state_publisher",
+            executable="robot_state_publisher",
+            name="robot_state_publisher",
+            parameters=[{
+                "robot_description": ParameterValue(
+                    Command([
+                        FindExecutable(name="xacro"), " ",
+                        LaunchConfiguration("model"), " ",
+                        "prefix:=", LaunchConfiguration("prefix"), " ",
+                        "use_gazebo_controllers:=", LaunchConfiguration("use_gazebo_controllers"),
+                        " ",
+                        "use_gazebo_odom:=", LaunchConfiguration("use_gazebo_odom"),
+                        " ",
+                    ]),
+                    value_type=str
+                )
+            }],
+            output="screen"
+        ),
 
         # Include external launch file
         # Include the Gazebo spawner launch file unconditionally with arguments
