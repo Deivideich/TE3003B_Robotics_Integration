@@ -84,11 +84,11 @@ def generate_launch_description():
             description="Using real sampling on SE2States or the grid map for A* algorithm"
         ),
         DeclareLaunchArgument(
-            name="robot_width", default_value="0.4",
+            name="robot_width", default_value="0.25",
             description="Width used for basefootprint"
         ),
         DeclareLaunchArgument(
-            name="robot_height", default_value="0.4",
+            name="robot_height", default_value="0.25",
             description="Height used for basefootprint"
         ),
         
