@@ -36,7 +36,15 @@ def generate_launch_description():
             description="Desired linear speed for controller"
         ),
         DeclareLaunchArgument(
+            name="angular_speed", default_value="0.4",
+            description="Desired linear speed for controller"
+        ),
+        DeclareLaunchArgument(
             name="lookahead_distance", default_value="0.2",
+            description="Lookahead distance used in PurePursuit controller"
+        ),
+        DeclareLaunchArgument(
+            name="orientation_tolerance", default_value="0.15",
             description="Lookahead distance used in PurePursuit controller"
         ),
         DeclareLaunchArgument(
@@ -60,11 +68,11 @@ def generate_launch_description():
             description="Used to bin theta into the hash map"
         ),
         DeclareLaunchArgument(
-            name="translational_weight", default_value="0.5",
+            name="translational_weight", default_value="0.1",
             description="Scale used for translational distance in A*"
         ),
         DeclareLaunchArgument(
-            name="rotational_weight", default_value="0.5",
+            name="rotational_weight", default_value="0.9",
             description="Scale used for theta distance in A*"
         ),
         DeclareLaunchArgument(
@@ -76,11 +84,11 @@ def generate_launch_description():
             description="Using real sampling on SE2States or the grid map for A* algorithm"
         ),
         DeclareLaunchArgument(
-            name="robot_width", default_value="0.4",
+            name="robot_width", default_value="0.25",
             description="Width used for basefootprint"
         ),
         DeclareLaunchArgument(
-            name="robot_height", default_value="0.4",
+            name="robot_height", default_value="0.25",
             description="Height used for basefootprint"
         ),
         
@@ -109,7 +117,9 @@ def generate_launch_description():
             parameters=[{
                 "controller_type" : LaunchConfiguration("controller_type"),
                 "linear_speed" : LaunchConfiguration("linear_speed"),
+                "angular_speed" : LaunchConfiguration("angular_speed"),
                 "lookahead_distance" : LaunchConfiguration("lookahead_distance"),
+                "orientation_tolerance" : LaunchConfiguration("orientation_tolerance"),
                 "kP" : LaunchConfiguration("kP"),
                 "kI" : LaunchConfiguration("kI"),
                 "kD" : LaunchConfiguration("kD"),

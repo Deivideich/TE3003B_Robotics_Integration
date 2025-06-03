@@ -4,6 +4,7 @@
 #include <geometry_msgs/msg/twist.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <vector>
+#include <cmath>
 
 namespace puzzlebot_controllers 
 {
@@ -12,8 +13,12 @@ namespace puzzlebot_controllers
         class ControllerInterface {
             public:
                 double linear_speed_;
+                double angular_speed_;
                 int path_index_ = 0;
-                ControllerInterface(double linear_speed) { linear_speed_ = linear_speed; }
+                ControllerInterface(double linear_speed, double angular_speed) { 
+                    linear_speed_ = linear_speed; 
+                    angular_speed_ = angular_speed;
+                }
 
                 virtual ~ControllerInterface() = default;
                 

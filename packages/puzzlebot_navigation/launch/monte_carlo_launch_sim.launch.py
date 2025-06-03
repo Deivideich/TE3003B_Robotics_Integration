@@ -18,10 +18,11 @@ mcl_args = {
     'clusterEps': 0.5,
     'clusterMinSamples': 0.05,
     'scaleRdParticles': 0.0,
-    'minDistance': 0.01,
+    'minDistance': 0.001,
     'minAngle': 5.0,
     'repropagateCountNeeded': 1,
     'HZ' : 20.0,
+    'sim': True,
 }
 
 def generate_launch_description():
@@ -116,7 +117,6 @@ def generate_launch_description():
                 "spawn_entity_name": LaunchConfiguration("spawn_entity_name"),
             }.items()
         ),
-
 
         # Optional RViz launch
         Node(

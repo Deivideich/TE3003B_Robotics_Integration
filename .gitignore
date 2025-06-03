@@ -6,5 +6,12 @@ install/
 *.so
 *.exe
 *.zip
+logged_data/
+*.pyc
 *.jpg
+*.pt
+*.pth
+*events.out.tf*
+*truck_*.son
+*.zip
 logged_data/

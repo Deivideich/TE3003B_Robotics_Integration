@@ -31,6 +31,7 @@ ARGS = {
     'minAngle': 5.0,
     'repropagateCountNeeded': 1,
     'HZ' : 20.0,
+    'sim': False,
 }
 class MCLNode(Node):
     def __init__(self):
@@ -48,6 +49,7 @@ class MCLNode(Node):
         self.declare_parameter('minAngle', ARGS['minAngle'])
         self.declare_parameter('repropagateCountNeeded', ARGS['repropagateCountNeeded'])
         self.declare_parameter('HZ', ARGS['HZ'])
+        self.declare_parameter('sim', ARGS['sim'])
 
         self.initialize_params()
 
@@ -83,10 +85,12 @@ class MCLNode(Node):
         self.particles_pub = self.create_publisher(PoseArray, '/particle_cloud', 10)
         
         #### SUBSCRIBERS ####
-        self.create_subscription(OccupancyGrid, '/map', self.map_callback, 10)
-        self.create_subscription(Odometry, '/odom', self.odom_callback, 10)
-        self.create_subscription(LaserScan, '/scan', self.scan_callback, 10)
-        self.create_subscription(PoseWithCovarianceStamped, '/initialpose', self.pose_overwrite, 10)
+        qos = rclpy.qos.QoSProfile(depth=10)
+        qos.reliability = rclpy.qos.QoSReliabilityPolicy.BEST_EFFORT
+        self.create_subscription(OccupancyGrid, '/map', self.map_callback, qos)
+        self.create_subscription(Odometry, '/odom', self.odom_callback, qos)
+        self.create_subscription(LaserScan, '/scan', self.scan_callback, qos)
+        self.create_subscription(PoseWithCovarianceStamped, '/initialpose', self.pose_overwrite, qos)
 
         #### TIMER ####
         self.timer = self.create_timer(0.05, self.mcl_loop)
@@ -107,7 +111,8 @@ class MCLNode(Node):
         self.min_distance = self.get_parameter('minDistance').get_parameter_value().double_value
         self.min_angle = math.radians(self.get_parameter('minAngle').get_parameter_value().double_value)
         self.repropagateCountNeeded = int(self.get_parameter('repropagateCountNeeded').get_parameter_value().integer_value)
-
+        self.sim = self.get_parameter('sim').get_parameter_value().bool_value
+        
     def publish_estimated_pose(self):
         x, y, theta = self.estimate_pose()
 
@@ -226,15 +231,25 @@ class MCLNode(Node):
             return (0.0, 0.0, 0.0, 1.0)
     
     def scan_callback(self, msg):
-        self.scan = msg
-        self.scan_received = True
-
         scan_msg = msg
-        scan_msg.header.stamp = self.get_clock().now().to_msg()
+        if self.sim:
+            scan_msg.header.stamp = self.get_clock().now().to_msg()
         scan_msg.angle_increment = scan_msg.angle_increment * self.scan_step
         scan_msg.ranges = scan_msg.ranges[::self.scan_step]
         scan_msg.intensities = scan_msg.intensities[::self.scan_step] if scan_msg.intensities else []
         self.scan_pub.publish(scan_msg)
+        
+        self.transform_laser_scan(msg)
+        self.scan_received = True
+        
+    # transform from msg frame to "laser_frame"
+    def transform_laser_scan(self, scan_msg):
+        self.scan = scan_msg
+        if not self.sim:
+            self.get_logger().info("TRANSFORMING SCAN TO REAL ROBOT FRAME")
+            self.scan.angle_min = scan_msg.angle_min + 3.14
+            self.scan.angle_max = scan_msg.angle_max + 3.14
+
 
     def odom_callback(self, msg):
         self.odom = msg
@@ -244,6 +259,7 @@ class MCLNode(Node):
             return
         # Save delta odom
         self.delta_motion = self.compute_odometry_delta(self.last_odom, self.odom)
+        self.last_odom = self.odom
 
 
     def sensor_update(self):
@@ -320,7 +336,6 @@ class MCLNode(Node):
         except Exception as e:
             self.get_logger().warn(f"{str(e)}")
 
-
     def compute_odometry_delta(self, last_odom, current_odom):
         def get_pose(odom):
             pos = odom.pose.pose.position
@@ -331,10 +346,44 @@ class MCLNode(Node):
         x1, y1, theta1 = get_pose(last_odom)
         x2, y2, theta2 = get_pose(current_odom)
 
-        dx = x2 - x1
-        dy = y2 - y1
+        # Delta in world frame
+        dx_world = x2 - x1
+        dy_world = y2 - y1
         dtheta = self.angle_diff(theta2, theta1)
-        return dx, dy, dtheta
+
+        # Transform delta into robot (local) frame at time t1
+        dx_local = math.cos(theta1) * dx_world + math.sin(theta1) * dy_world
+        dy_local = -math.sin(theta1) * dx_world + math.cos(theta1) * dy_world
+
+        return dx_local, dy_local, dtheta
+
+    def angle_diff(self, a, b):
+        diff = a - b
+        return (diff + np.pi) % (2 * np.pi) - np.pi
+
+    def motion_update(self, delta):
+        dx, dy, dtheta = delta
+
+        motion_noise = {
+            "x": 0.01,
+            "y": 0.01,
+            "theta": 0.01
+        }
+
+        new_particles = []
+        for x, y, theta in self.particles:
+            # Transform robot-frame delta to world frame using particle's heading
+            dx_world = dx * math.cos(theta) - dy * math.sin(theta)
+            dy_world = dx * math.sin(theta) + dy * math.cos(theta)
+
+            x_new = x + dx_world + np.random.normal(0, motion_noise["x"])
+            y_new = y + dy_world + np.random.normal(0, motion_noise["y"])
+            theta_new = theta + dtheta + np.random.normal(0, motion_noise["theta"])
+            theta_new =  (theta_new + math.pi) % (2 * math.pi) - math.pi 
+
+            new_particles.append((x_new, y_new, theta_new))
+
+
     
     def angle_diff(self, a, b):
         diff = a - b
@@ -413,46 +462,11 @@ class MCLNode(Node):
         if success:
             self.particles  = resampled_particles.reshape((self.num_particles, 3)).tolist()
 
-            # free_indices = np.argwhere(self.map_data == 0)  # 0 = free space
-
-            # for _ in range(int(self.num_particles * self.scale_rd_particles)):
-            #     particle_rd_idx = np.random.randint(0, self.num_particles)
-            #     new_y, new_x = free_indices[np.random.choice(len(free_indices))]
-                
-            #     new_x = new_x * self.map_resolution + self.map_origin.x
-            #     new_y = new_y * self.map_resolution + self.map_origin.y
-            #     new_theta = np.random.uniform(-np.pi, np.pi)
-            #     self.particles[particle_rd_idx] = (new_x, new_y, new_theta)
-
             self.particle_weights = np.ones(self.num_particles)
             self.particle_weights /= self.num_particles
         else:
             self.get_logger().warn("C++ resampling failed. Falling back to Python version.")
 
-
-    def motion_update(self, delta):
-        dx, dy, dtheta = delta
-
-        delta_trans = math.sqrt(dx**2 + dy**2)
-        delta_rot = math.atan2(dy, dx)
-        
-        trans_noise_coeff = self.odom_covariance[2] * abs(delta_trans) + self.odom_covariance[3] * abs(dtheta)
-        rot_noise_coeff = self.odom_covariance[0] * abs(dtheta) + self.odom_covariance[1] * abs(delta_trans)
-
-        for i, (x, y, theta) in enumerate(self.particles):
-            delta_rot1 = self.angle_diff(math.atan2(dy, dx), theta)
-            delta_rot2 = self.angle_diff(dtheta, delta_rot1)
-
-            delta_trans_noisy = delta_trans + np.random.normal(0, trans_noise_coeff)
-            delta_rot1_noisy = delta_rot1 + np.random.normal(0, rot_noise_coeff)
-            delta_rot2_noisy = delta_rot2 + np.random.normal(0, rot_noise_coeff)
-
-            x_new = x + delta_trans_noisy * math.cos(theta + delta_rot1_noisy)
-            y_new = y + delta_trans_noisy * math.sin(theta + delta_rot1_noisy)
-            theta_new = theta + delta_rot1_noisy + delta_rot2_noisy
-            theta_new = (theta_new + math.pi) % (2 * math.pi) - math.pi
-
-            self.particles[i] = (x_new, y_new, theta_new)
 
     def broadcast_transform(self):
         try:
@@ -526,7 +540,7 @@ class MCLNode(Node):
 
         if diffDistance > self.min_distance or diffAngle > self.min_angle:
             self.motion_update(self.delta_motion)       
-            self.last_odom = self.odom
+            
 
             self.sensor_update()
             
@@ -536,15 +550,12 @@ class MCLNode(Node):
             if (neff > self.num_particles * 0.1) and (self.predictionCounter >= self.repropagateCountNeeded):
                 self.resample_particles()
                 self.predictionCounter = 0
-        
-       
-        
 
-        # self.publish_particles()
+        self.publish_particles()
         self.broadcast_transform()
         self.publish_estimated_pose()   
 
-        self.get_logger().info(f"Elapsed time: {time() - self.prev_time}")
+        # self.get_logger().info(f"Elapsed time: {time() - self.prev_time}")
 
 
 def main(args=None):
