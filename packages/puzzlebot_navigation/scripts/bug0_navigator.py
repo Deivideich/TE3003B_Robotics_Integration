@@ -26,6 +26,10 @@ class BugController(Node):
     def __init__(self):
         super().__init__('BugController')
         
+        # param if sim
+        self.declare_parameter('sim', False)
+        self.sim = self.get_parameter('sim').get_parameter_value().bool_value
+        
         self.tf_buffer = tf2_ros.Buffer()
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
         qos = rclpy.qos.QoSProfile(depth=10)
@@ -215,13 +219,25 @@ class BugController(Node):
         
         range = 3
         
-        self.right_dist = np.mean(msg.ranges[(90-range):(90+range)]) # Left
-        self.rightfront_dist = np.mean(msg.ranges[(135-range):(135+range)])
-        self.rightback_dist = np.mean(msg.ranges[(45-range):(45+range)]) # Right
-        self.front_dist = np.mean(msg.ranges[(180-range):(180+range)]) # Front
-        self.leftfront_dist = np.mean(msg.ranges[(225-range):(225+range)])
-        self.left_dist = np.mean(msg.ranges[(270-range):(270+range)])
-        self.leftback_dist = np.mean(msg.ranges[(315-range):(315+range)]) # Left-back
+        # on sim, laser scan has 180 as front
+        if self.sim:
+            self.right_dist = np.mean(msg.ranges[(90-range):(90+range)]) # Left
+            self.rightfront_dist = np.mean(msg.ranges[(135-range):(135+range)])
+            self.rightback_dist = np.mean(msg.ranges[(45-range):(45+range)]) # Right
+            self.front_dist = np.mean(msg.ranges[(180-range):(180+range)]) # Front
+            self.leftfront_dist = np.mean(msg.ranges[(225-range):(225+range)])
+            self.left_dist = np.mean(msg.ranges[(270-range):(270+range)])
+            self.leftback_dist = np.mean(msg.ranges[(315-range):(315+range)]) # Left-back
+        else:
+            self.front_dist = np.mean(np.mean([
+                msg.ranges[360-range:],
+                msg.ranges[:range]]))
+            self.leftfront_dist = np.mean(msg.ranges[(45-range):(45+range)]) # Left-front
+            self.left_dist = np.mean(msg.ranges[(90-range):(90+range)]) # Left
+            self.leftback_dist = np.mean(msg.ranges[(135-range):(135+range)]) # Left-back
+            self.rightfront_dist = np.mean(msg.ranges[(315-range):(315+range)]) # Right-front
+            self.right_dist = np.mean(msg.ranges[(270-range):(270+range)]) # Right
+            self.rightback_dist = np.mean(msg.ranges[(225-range):(225+range)]) # Right-back
         
         # Print the distance values (in meters) for testing
         # self.get_logger().info('L:%f LF:%f F:%f RF:%f R:%f' % (
@@ -400,8 +416,9 @@ class BugController(Node):
         start_angle = angle_to_goal_deg - angle_range / 2
         end_angle = angle_to_goal_deg + angle_range / 2
         # consider 180 is the front of the robot
-        start_index = int((start_angle + 180))
-        end_index = int((end_angle + 180))
+        if self.sim:
+            start_index = int((start_angle + 180))
+            end_index = int((end_angle + 180))
         # ensure between 0 and 360 degrees
         start_index = start_index % 360
         end_index = end_index % 360
