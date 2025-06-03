@@ -41,7 +41,7 @@ class BugController(Node):
             PoseStamped,
             '/goal_pose',
             self.pose_received,
-            10)
+            qos)
         
         self.publisher_ = self.create_publisher(
             Twist, 
@@ -113,8 +113,8 @@ class BugController(Node):
         self.wall_following_state = "turn left"
         
         # Set turning speeds (to the left) in rad/s 
-        self.turning_speed_wf_fast = 0.4  # Fast turn
-        self.turning_speed_wf_slow = 0.3 # Slow turn
+        self.turning_speed_wf_fast = 0.3  # Fast turn
+        self.turning_speed_wf_slow = 0.2 # Slow turn
         
         # Wall following distance threshold.
         # We want to try to keep within this distance from the wall.
@@ -138,7 +138,7 @@ class BugController(Node):
         
         # Anything less than this distance means we have encountered
         # a wall. Value determined through trial and error.
-        self.dist_thresh_bug0 = 0.25
+        self.dist_thresh_bug0 = 0.3
         
         # Leave point must be within +/- 0.1m of the start-goal line
         # in order to go from wall following mode to go to goal mode
@@ -213,13 +213,21 @@ class BugController(Node):
     def scan_callback(self, msg):
         """
         This method gets called every time a LaserScan message is 
-        received on the /en613/scan ROS topic   
+        received on the /scan ROS topic   
         """
         # (e.g. -90 degrees to 90 degrees....0 to 180 degrees)
         
-        range = 3
+        range = 2
         
-        # on sim, laser scan has 180 as front
+        # if laser scan msg.ranges is != 360, then sample it
+        if len(msg.ranges) % 360 == 0:
+            # check the step needed for the sampling
+            step = int(len(msg.ranges) / 360)
+            msg.ranges = msg.ranges[::step]
+            
+        
+        # clean infs
+        
         if self.sim:
             self.right_dist = np.mean(msg.ranges[(90-range):(90+range)]) # Left
             self.rightfront_dist = np.mean(msg.ranges[(135-range):(135+range)])
@@ -229,7 +237,7 @@ class BugController(Node):
             self.left_dist = np.mean(msg.ranges[(270-range):(270+range)])
             self.leftback_dist = np.mean(msg.ranges[(315-range):(315+range)]) # Left-back
         else:
-            self.front_dist = np.mean(np.mean([
+            self.front_dist = np.mean(np.concatenate([
                 msg.ranges[360-range:],
                 msg.ranges[:range]]))
             self.leftfront_dist = np.mean(msg.ranges[(45-range):(45+range)]) # Left-front
@@ -240,17 +248,19 @@ class BugController(Node):
             self.rightback_dist = np.mean(msg.ranges[(225-range):(225+range)]) # Right-back
         
         # Print the distance values (in meters) for testing
-        # self.get_logger().info('L:%f LF:%f F:%f RF:%f R:%f' % (
-        #     self.left_dist,
-        #     self.leftfront_dist,
-        #     self.front_dist,
-        #     self.rightfront_dist,
-        #     self.right_dist))
+        self.get_logger().info('L:%f LF:%f F:%f RF:%f R:%f' % (
+            self.left_dist,
+            self.leftfront_dist,
+            self.front_dist,
+            self.rightfront_dist,
+            self.right_dist))
         
         self.curr_scan = msg
         
         if self.goal_x_coordinates == False and self.goal_y_coordinates == False:
             return
+        
+        print(f"is way free: {self.is_way_to_goal_free}")
             
     def robot_pose_callback(self, msg):
         """
@@ -270,6 +280,8 @@ class BugController(Node):
         # Wait until we have received some goal destinations.
         if self.goal_x_coordinates == False and self.goal_y_coordinates == False:
             return
+        
+        return
         
         # See if the bug0 algorithm is activated. If yes, call bug0()
         if self.bug0_switch == "ON":

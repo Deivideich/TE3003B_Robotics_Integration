@@ -19,6 +19,7 @@ class LocalMapPublisher(Node):
         self.declare_parameter('map_width', 1.0)  # in meters
         self.declare_parameter('map_height', 1.0)
         self.declare_parameter('map_resolution', 0.05)
+        self.declare_parameter('sim', False)  # True for simulation, False for real robot
 
         # Object drawing parameters
         self.declare_parameter('object_width', 0.2)  # in meters
@@ -29,6 +30,7 @@ class LocalMapPublisher(Node):
         self.map_resolution = self.get_parameter('map_resolution').value
         self.object_width = self.get_parameter('object_width').value
         self.object_height = self.get_parameter('object_height').value
+        self.sim = self.get_parameter('sim').get_parameter_value().bool_value
 
         self.map_width_cells = int(self.map_width / self.map_resolution)
         self.map_height_cells = int(self.map_height / self.map_resolution)
@@ -76,7 +78,12 @@ class LocalMapPublisher(Node):
         # TODO: CHANGE THIS FOR REAL ROBOT msg.angle_min and max + pi
         local_map = -1 * np.ones((self.map_height_cells, self.map_width_cells), dtype=np.int8)
         # Fill in laser scan data
+        if not self.sim:
+            msg.angle_min = msg.angle_min + 3.14
+            msg.angle_max = msg.angle_max + 3.14
+        
         angle = msg.angle_min
+        
         for r in msg.ranges:
             if msg.range_min < r < msg.range_max:
                 x = r * math.cos(angle)
