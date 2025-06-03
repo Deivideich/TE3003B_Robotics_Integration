@@ -27,7 +27,8 @@ namespace puzzlebot_controllers
             }
 
             // If no lookahead point, we are at the end -> align to final pose
-            if (lookahead == nullptr) {
+            if (lookahead == nullptr || orientation_correction_) {
+                orientation_correction_ = true;
                 const auto& goal_pose = path.back().pose;
 
                 // Compute angle difference
@@ -41,6 +42,7 @@ namespace puzzlebot_controllers
 
                 // If orientation is aligned, stop
                 if (std::abs(yaw_error) < orientation_tolerance_) {
+                    orientation_correction_ = false;
                     cmd->linear.x = 0.0;
                     cmd->angular.z = 0.0;
                     return true;  // Goal fully reached

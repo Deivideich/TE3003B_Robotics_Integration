@@ -5,6 +5,8 @@
 #include <nav_msgs/msg/odometry.hpp>
 #include <nav_msgs/msg/occupancy_grid.hpp>
 #include <std_msgs/msg/string.hpp>
+#include "puzzlebot_interfaces/srv/plan_path.hpp"
+
 #include "puzzlebot_controller/controllers/controller_interface.hpp"
 #include "puzzlebot_controller/controllers/pure_pursuit.hpp"
 #include "puzzlebot_controller/controllers/pid_controller.hpp"
@@ -14,8 +16,6 @@
 #include "puzzlebot_controller/bug_controllers/bug0_controller.hpp"
 // #include "puzzlebot_controller/bug_controllers/bug1_controller.hpp"
 // #include "puzzlebot_controller/bug_controllers/bug2_controller.hpp"
-
-#include "puzzlebot_interfaces/srv/plan_path.hpp"
 
 #include <future>
 #include <memory>
@@ -49,7 +49,7 @@ public:
     controller_type_ = this->declare_parameter<std::string>("controller_type", "pure_pursuit");
     usingBugAlgorithm_ = this->declare_parameter<bool>("usingBugAlgorithm", true);
     usingMCLPose_ = this->declare_parameter<bool>("usingMCLPose", true);
-    delta_angle_ = this->declare_parameter<float>("delta_angle", float(M_PI / 16));
+    delta_angle_ = this->declare_parameter<float>("delta_angle", float(M_PI / 32));
     deviation_threshold_ = this->declare_parameter<float>("deviation_threshold", 0.75);
     
     linear_speed_ = this->declare_parameter<float>("linear_speed", 0.1);
@@ -130,7 +130,6 @@ private:
       RCLCPP_INFO(this->get_logger(), "Received **NEW** goal pose: [x: %f, y: %f, z: %f, orientation: (%f, %f, %f, %f)]",
             msg->pose.position.x, msg->pose.position.y, msg->pose.position.z,
             msg->pose.orientation.x, msg->pose.orientation.y, msg->pose.orientation.z, msg->pose.orientation.w);
-      // needs_planning_ = true;
     } else {
       RCLCPP_INFO(this->get_logger(), "Received goal pose: [x: %f, y: %f, z: %f, orientation: (%f, %f, %f, %f)]",
             msg->pose.position.x, msg->pose.position.y, msg->pose.position.z,
@@ -169,8 +168,7 @@ private:
       RCLCPP_WARN(this->get_logger(), "Transform failed: %s", ex.what());
     }
     return result;
-  }
-                       
+  }                      
 
   double angle_diff(double a, double b){
     double diff = a - b;
@@ -180,97 +178,17 @@ private:
     return diff;
   }
 
-  // bool isPathBlocked(const geometry_msgs::msg::PoseStamped& curr_pose, 
-  //                         const geometry_msgs::msg::PoseStamped& desired_pose,
-  //                         double angle_delta) 
-  // {
-  //     if (!merged_map_) return false;
-
-  //     // Get robot's orientation (yaw)
-  //     tf2::Quaternion q(
-  //         curr_pose.pose.orientation.x,
-  //         curr_pose.pose.orientation.y,
-  //         curr_pose.pose.orientation.z,
-  //         curr_pose.pose.orientation.w
-  //     );
-  //     double robot_angle = tf2::getYaw(q);
-
-  //     // Get orientations (yaw) of current and desired poses
-  //     tf2::Quaternion q_desired(
-  //         desired_pose.pose.orientation.x,
-  //         desired_pose.pose.orientation.y,
-  //         desired_pose.pose.orientation.z,
-  //         desired_pose.pose.orientation.w
-  //     );
-  //     double desired_angle = tf2::getYaw(q_desired);
-
-  //     // Calculate check_distance as the distance between curr_pose and desired_pose
-  //     double dx = desired_pose.pose.position.x - curr_pose.pose.position.x;
-  //     double dy = desired_pose.pose.position.y - curr_pose.pose.position.y;
-  //     double check_distance = 0.25  ;
-
-  //     // Use the average of robot_angle and desired_angle as the center, and half their difference as the angle_delta
-  //     double center_angle = (robot_angle + desired_angle) / 2.0;
-  //     double angle_span = std::abs(angle_diff(desired_angle, robot_angle));
-  //     double min_range = center_angle - angle_span / 2.0;
-  //     double max_range = center_angle + angle_span / 2.0;
-  //     int num_rays = 15; // Number of rays to cast within the angle range
-
-  //     auto worldToMap = [this](double x, double y, int& mx, int& my) {
-  //         mx = static_cast<int>((x - merged_map_->info.origin.position.x) / merged_map_->info.resolution);
-  //         my = static_cast<int>((y - merged_map_->info.origin.position.y) / merged_map_->info.resolution);
-  //     };
-
-  //     int width = merged_map_->info.width;
-  //     int height = merged_map_->info.height;
-
-  //     geometry_msgs::msg::Point start = curr_pose.pose.position;
-
-  //     for (int i = 0; i < num_rays; ++i) {
-  //         double angle = min_range + i * (max_range - min_range) / (num_rays - 1);
-  //         double end_x = start.x + check_distance * std::cos(angle);
-  //         double end_y = start.y + check_distance * std::sin(angle);
-
-  //         int x0, y0, x1, y1;
-  //         worldToMap(start.x, start.y, x0, y0);
-  //         worldToMap(end_x, end_y, x1, y1);
-
-  //         // Bresenham's line algorithm
-  //         int dx = abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
-  //         int dy = -abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
-  //         int err = dx + dy, e2;
-
-  //         int cx = x0, cy = y0;
-  //         while (true) {
-  //             if (cx < 0 || cx >= width || cy < 0 || cy >= height) break;
-  //             int idx = cy * width + cx;
-  //             if (merged_map_->data[idx] > 50) // Occupied threshold
-  //                 return true;
-
-  //             if (cx == x1 && cy == y1) break;
-  //             e2 = 2 * err;
-  //             if (e2 >= dy) { err += dy; cx += sx; }
-  //             if (e2 <= dx) { err += dx; cy += sy; }
-  //         }
-  //     }
-
-  //     RCLCPP_INFO(this->get_logger(), "Obstacle found using BUG2 controller");
-  //     return false;
-  // }
   bool isPathBlocked (const geometry_msgs::msg::PoseStamped& curr_pose, 
                    const geometry_msgs::msg::PoseStamped& desired_pose,
                    double angle_delta) 
   {
       if (!local_map_) return false;
-
-      // Transform desired_pose into base_link frame
-      // geometry_msgs::msg::PoseStamped desired_pose = transfromToBaselink(desired_pose, true);;
       
       // Compute direction and check distance in base_link frame
       double dx = desired_pose.pose.position.x;
       double dy = desired_pose.pose.position.y;
       double desired_angle = std::atan2(dy, dx);
-      double check_distance = 0.25;//std::hypot(dx, dy);
+      double check_distance = std::hypot(dx, dy);
 
       double min_range = desired_angle - angle_delta;
       double max_range = desired_angle + angle_delta;
@@ -313,48 +231,6 @@ private:
 
       return false;
   }
-
-
-  // void activateBug2Mode() {
-  //   RCLCPP_WARN(this->get_logger(), "Activating Bug-2 mode.");
-  //   geometry_msgs::msg::Point current = current_pose_->pose.position;
-  //   geometry_msgs::msg::Point goal = goal_pose_->pose.position;
-  //   bug_controller_->reset();
-  //   bug_controller_->setMLine(current, goal);
-  //   bug_mode_active_ = true;
-  // }
-
-  // void needsReplanning(){
-  //   if (bug_mode_active_ && usingBugAlgorithm_) {          
-  //     geometry_msgs::msg::Twist::SharedPtr cmd = std::make_shared<geometry_msgs::msg::Twist>();
-  //     if(bug_controller_->computeCommand(*current_pose_, current_path_, cmd)){
-  //       RCLCPP_INFO(this->get_logger(), "Bug mode done, resuming path tracking.");
-  //       bug_controller_->reset();  // Typo fixed: from 'resut' to 'reset'
-  //       needs_planning_ = true;
-  //       bug_mode_active_ = false;
-  //     }
-
-  //     cmd_pub_->publish(*cmd);
-  //   } else if (usingBugAlgorithm_ && controller_->getPathIndex() + 1 < current_path_.size() && 
-  //       bug_controller_->isDirectionBlocked(*current_pose_, -(M_PI / 8), (M_PI / 8), (M_PI / 16), 0.05, true)) {
-  //     activateBug2Mode();
-  //   } 
-
-  //   // CHECK IF NEEDS PLANNING DEPENDING ON CONTROLLER_GETPATHINDEX POSE AND CURRENT POSE 
-  //   if (!current_path_.empty() && controller_->getPathIndex() < current_path_.size()) {
-  //     const auto& target_pose = current_path_[controller_->getPathIndex()].pose;
-  //     const auto& current_position = current_pose_->pose.position;
-
-  //     double dx = target_pose.position.x - current_position.x;
-  //     double dy = target_pose.position.y - current_position.y;
-  //     double distance_to_target = std::sqrt(dx * dx + dy * dy);
-  //     // RCLCPP_INFO(this->get_logger(), "Distance: %2.2f", distance_to_target)
-  //     if (distance_to_target > lookahead_distance_ * 2) {
-  //       RCLCPP_WARN(this->get_logger(), "Significant deviation detected. Replanning required.");
-  //       needs_planning_ = true;
-  //     }
-  //   }
-  // }
 
   std_msgs::msg::String stateToString(ControllerStates state) {
     auto message = std_msgs::msg::String();
@@ -426,8 +302,8 @@ private:
         break;
       case ControllerStates::GLOBAL_CONTROLLER:
       {
-        const auto& target_pose = transfromToBaselink(std::make_shared<geometry_msgs::msg::PoseStamped>(current_path_[controller_->getPathIndex()]), true);
-        const auto& current_pose = transfromToBaselink(current_pose_);
+        const auto& target_pose = current_path_[controller_->getPathIndex()];
+        const auto& current_pose = *current_pose_;
 
         double dx = target_pose.pose.position.x - current_pose.pose.position.x;
         double dy = target_pose.pose.position.y - current_pose.pose.position.y;
@@ -436,7 +312,7 @@ private:
         if (distance_to_target > deviation_threshold_) {
           RCLCPP_WARN(this->get_logger(), "Significant deviation detected. Replanning required.");
           controller_state_ = GLOBAL_PLANNING;
-        }else if (isPathBlocked(current_pose, target_pose, delta_angle_)){
+        }else if (isPathBlocked(transfromToBaselink(current_pose_), transfromToBaselink(std::make_shared<geometry_msgs::msg::PoseStamped>(target_pose), true), delta_angle_)){
           RCLCPP_WARN(this->get_logger(), "Path is blocked.");
           controller_state_ = OBSTACLE_FOUND;
         } else if (controller_->computeCommand(current_pose, current_path_, cmd)) {
@@ -451,50 +327,19 @@ private:
       {
         if (usingBugAlgorithm_){
           RCLCPP_INFO(this->get_logger(), "Obstacle found using BUG2 controller");
-          controller_state_ = BUG2_PLANNING;
+          controller_state_ = BUG_CONTROLLER;
         } else {
           RCLCPP_INFO(this->get_logger(), "Obstacle found but not using bug algorithm, passing into replan from current pose");
           controller_state_ = GLOBAL_PLANNING;
         }
       }
         break;
-      case ControllerStates::BUG2_PLANNING:
-        controller_state_ =  BUG_CONTROLLER;
-      // {
-      //   const auto& target_pose = current_path_[controller_->getPathIndex()];
-      //   const auto& current_pose = *current_pose_;
-
-      //   auto request = std::make_shared<puzzlebot_interfaces::srv::PlanPath::Request>();
-      //   request->start = current_pose;
-      //   request->goal = target_pose;
-
-      //   auto future_result = bug_planner_client_->async_send_request(request);
-      //   // Set up a callback for when the future is complete
-      //   while (future_result.wait_for(100ms) != std::future_status::ready);
-
-      //   auto response = future_result.get();
-
-      //   if (response->result){
-      //     bug_current_path_ = response->path;
-      //     controller_state_ = BUG_CONTROLLER;
-      //   } else {
-      //     RCLCPP_WARN(this->get_logger(), "Could not find a path using BUG2 controller, switching to Global Planning");
-      //     controller_state_ = GLOBAL_PLANNING;
-      //   }
-      //   bug_controller_->resetIndex();
-      // }
-        break;
       case ControllerStates::BUG_CONTROLLER:
       {
-        // const auto& target_pose = bug_current_path_[bug_controller_->getPathIndex()];
         const auto& goal_pose = transfromToBaselink(goal_pose_, true);
         const auto& current_pose = transfromToBaselink(current_pose_, true);
 
-        // // Check if there is obstacle within path
-        // if (isPathBlocked(current_pose, target_pose, delta_angle_)){
-        //   RCLCPP_WARN(this->get_logger(), "BUG2 Path is blocked.");
-        //   controller_state_ = OBSTACLE_FOUND;
-        /*} else*/ if (bug_controller_->computeCommand(current_pose, goal_pose, cmd)) {
+        if (bug_controller_->computeCommand(current_pose, goal_pose, cmd)) {
           RCLCPP_INFO(this->get_logger(), "Achieved better position with BUG2 algorithm, switching to global planning since obstacle has being avoided!");
           controller_state_ = GLOBAL_PLANNING;
         } else {
@@ -509,43 +354,6 @@ private:
 
     cmd_pub_->publish(*cmd);
     control_state_pub_->publish(stateToString(controller_state_));
-
-    
-    // if (needs_planning_) {
-    //   needs_planning_ = false;
-
-    //   auto request = std::make_shared<puzzlebot_interfaces::srv::PlanPath::Request>();
-    //   request->start = *current_pose_;
-    //   request->goal = *goal_pose_;
-
-    //   auto future_result = planner_client_->async_send_request(request);
-    //   // Set up a callback for when the future is complete
-    //   while (future_result.wait_for(100ms) != std::future_status::ready);
-
-    //   auto response = future_result.get();
-
-    //   if (response->result){
-    //     current_path_ = response->path;
-    //     controller_->resetIndex();
-    //   } else {
-    //     RCLCPP_WARN(this->get_logger(), "Could not find a path");
-    //     goal_pose_ = nullptr;
-    //   }
-    // }
-
-    // needsReplanning();
-
-    // if (!current_path_.empty() && !bug_mode_active_ && ! needs_planning_) {
-    //   geometry_msgs::msg::Twist::SharedPtr cmd = std::make_shared<geometry_msgs::msg::Twist>();
-    //   if (controller_->computeCommand(*current_pose_, current_path_, cmd)) {
-    //     RCLCPP_INFO(this->get_logger(), "Achieved goal!");
-
-    //     goal_pose_ = nullptr;
-    //     needs_planning_ = true;
-    //   }
-
-    //   cmd_pub_->publish(*cmd);
-    // }    
   }
 
   rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr curr_pose_listener_;
@@ -571,9 +379,6 @@ private:
   std::shared_ptr<tf2_ros::Buffer> tf_buffer_ = nullptr;
   std::shared_ptr<tf2_ros::TransformListener> tf_listener_ = nullptr;
 
-  bool needs_planning_ = true;
-  bool bug_mode_active_ = false;
-
   // Node Params
   std::string controller_type_;
   bool usingBugAlgorithm_;
@@ -583,9 +388,6 @@ private:
   
   std::unordered_map<bool,std::string> pose_topics = {{false, "/kalman_pose"}, {true, "/mcl_pose"}};
 
-  std::unique_ptr<puzzlebot_controllers::controllers::ControllerInterface> controller_;
-  std::unique_ptr<puzzlebot_controllers::controllers::Bug2Controller> bug_controller_;
-  
   double linear_speed_, angular_speed_;
   double lookahead_distance_, orientation_tolerance_;
 

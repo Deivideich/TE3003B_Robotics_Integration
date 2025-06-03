@@ -121,32 +121,15 @@ def generate_launch_description():
             package="gazebo_ros",
             executable="spawn_entity.py",  # Using spawn_entity.py instead of spawn_model.py
             arguments=[
-                "-file", os.path.join(gazebo_model_path, "model.sdf"),  # Replace with model.sdf path
+                "-file", os.path.join(small_gazebo_model_path, "model.sdf"),  # Replace with model.sdf path
                 "-entity", "wall_model",  # Correct entity name here
                 "-robot_namespace", "wall"
             ],
             output="screen"
         ),
         
-        Node(
-            package="gazebo_ros",
-            executable="spawn_entity.py",
-            arguments=[
-                "-file", aruco_marker_path,
-                "-entity", "aruco_marker",
-                "-robot_namespace", "aruco_marker",
-                "-x", "1.0",  # X position
-                "-y", "1.0",  # Y position
-                "-z", "0.2",  # Z position
-                "-R", "0",    # Roll
-                "-P", "0",    # Pitch
-                "-Y", "0"     # Yaw
-            ],
-            output="screen"
-        ),
         
-        
-        TimerAction(
+TimerAction(
             period=5.0,
             actions=[
                 Node(
@@ -155,8 +138,8 @@ def generate_launch_description():
                     arguments=[
                         "-file", urdf_file,
                         "-entity", "box",
-                        "-x", "0.5",
-                        "-y", "0.0",
+                        "-x", "1.1",
+                        "-y", "0.7",
                         "-z", "0.0",
                         "-R", "0",
                         "-P", "0",
@@ -177,7 +160,7 @@ def generate_launch_description():
                         "-file", urdf_file,
                         "-entity", "box_2",
                         "-x", "0.5",
-                        "-y", "0.3",
+                        "-y", "1.2",
                         "-z", "0.0",
                         "-R", "0.0",
                         "-P", "0",
@@ -197,8 +180,8 @@ def generate_launch_description():
                     arguments=[
                         "-file", urdf_file,
                         "-entity", "box_3",
-                        "-x", "0.5",
-                        "-y", "-0.3",
+                        "-x", "1.2",
+                        "-y", "0.2",
                         "-z", "0.0",
                         "-R", "0",
                         "-P", "0",
@@ -219,7 +202,7 @@ def generate_launch_description():
                         "-file", urdf_file,
                         "-entity", "box_4",
                         "-x", "0.5",
-                        "-y", "0.6",
+                        "-y", "0.5",
                         "-z", "0.0",
                         "-R", "0.0",
                         "-P", "0",
@@ -229,7 +212,7 @@ def generate_launch_description():
                 ),
             ]
         ),
-
+        
         # Optional RViz launch
         Node(
             condition=IfCondition(LaunchConfiguration("rviz")),
