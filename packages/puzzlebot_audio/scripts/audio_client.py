@@ -28,7 +28,7 @@ class AudioClient(Node):
     
     
     
-    def eliminate_noise(self, audio, fs):
+    def eliminate_noise(self, audio, fs, threshold, padding_ms=50):
         # Placeholder for noise elimination logic
         # This function should implement the noise elimination algorithm
         # For now, we just return the original audio
@@ -36,30 +36,31 @@ class AudioClient(Node):
         frame_len = int(0.02 * fs)
         hop_len = int(0.008 * fs)
         clean_audio = []
-        
+
+        audio = audio.astype(np.float32)
+        audio = audio / (np.max(np.abs(audio)) + 1e-8)
 
         num_frames = int((len(audio) - frame_len) / hop_len) + 1
-        voice_flags = np.zeros(num_frames, dtype=bool)
-        zcr = np.zeros(num_frames)
         energy = np.zeros(num_frames)
         
         for i in range(num_frames):
             start = i * hop_len
             frame = audio[start:start + frame_len]
-            crossings = np.sum(np.abs(np.diff(np.sign(frame)))) / 2
-            zcr[i] = crossings / (frame_len - 1)
             energy[i] = np.sum(frame ** 2) / frame_len
 
             
         
-        zcr_thresh = 0.05 * np.max(zcr)
-        energy_thresh = 0.05 * np.max(energy)
+        energy_thresh = threshold * np.max(energy)
+        voice_flags = (energy > energy_thresh)
+        indices = np.where(voice_flags)[0]
 
-        for i in range(num_frames):
-            if energy[i] > energy_thresh:
-                voice_flags[i] = True
+        if len(indices) == 0:
+            self.get_logger().info('Audio is empty, do it again')
+            return audio
         
-        padding_frames = 2
+        padding_frames = int(fs * padding_ms / 1000)
+        start_sample = max(0, indices[0] * hop_len - padding_frames)
+        
 
         if np.any(voice_flags):
             first_voice_frame = np.argmax(voice_flags)   
