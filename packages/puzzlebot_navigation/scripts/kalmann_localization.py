@@ -20,6 +20,13 @@ class KalmanNode(Node):
     def __init__(self):
         super().__init__('kalman_node')
         
+        self.last_estimated_pose_time = time.time()
+        self.publish_estimated_pose_interval = 5  # seconds
+        
+        self.aruco_diff_x = 99.0
+        self.aruco_diff_y = 99.0
+        self.aruco_diff_angle = 99.0
+        
         # create broadcast tf param
         self.declare_parameter('broadcast_tf', True)
         self.broadcast_tf = self.get_parameter('broadcast_tf').get_parameter_value().bool_value
@@ -190,6 +197,18 @@ class KalmanNode(Node):
                 Time())
             
             self.aruco_robot_angle = self.aruco_yaw(self.aruco_rot_tf.transform.rotation)
+            
+            aruco_map_x = self.aruco_tf.transform.translation.x
+            aruco_map_y = self.aruco_tf.transform.translation.y
+            aruco_map_angle = self.aruco_yaw(self.aruco_tf.transform.rotation)
+            aruco_obs_x = self.aruco_rot_tf.transform.translation.x
+            aruco_obs_y = self.aruco_rot_tf.transform.translation.y
+            aruco_obs_angle = self.aruco_yaw(self.aruco_rot_tf.transform.rotation)
+            
+            self.aruco_diff_x = aruco_map_x - aruco_obs_x
+            self.aruco_diff_y = aruco_map_y - aruco_obs_y
+            self.aruco_diff_angle = aruco_map_angle - aruco_obs_angle
+            
             
         except Exception as e:
             self.get_logger().warn(f'Error obtaining transforms: {str(e)}')
@@ -409,13 +428,11 @@ class KalmanNode(Node):
         max_std_y = 0.1     # 20 cm
         max_std_theta = np.deg2rad(5)  # ~10 degrees
 
-        # self.get_logger().info(f"std_x: {round(std_x,3)} std_y: {round(std_y,3)} std_theta: {round(std_theta,3)}")
-        if std_x < max_std_x and std_y < max_std_y and std_theta < max_std_theta:
-            # self.get_logger().info("Pose estimate is confident (low covariance).")
+        if (abs(self.aruco_diff_x) < 0.05 and abs(self.aruco_diff_y) < 0.05 and abs(self.aruco_diff_angle) < 0.1) and \
+            (time.time() - self.last_estimated_pose_time > self.publish_estimated_pose_interval):
+            self.get_logger().info(f"Aruco {self.marker_id} is within acceptable range, sending estimated pose.")
             self.inital_pose_pub.publish(msg)
-        else:
-            pass
-            # self.get_logger().info("Pose estimate is uncertain (high covariance).")
+            self.last_estimated_pose_time = time.time()
         
         self.pub_pos.publish(msg) 
         

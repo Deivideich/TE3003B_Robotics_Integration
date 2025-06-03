@@ -85,7 +85,7 @@ class MCLNode(Node):
         self.particles_pub = self.create_publisher(PoseArray, '/particle_cloud', 10)
         
         #### SUBSCRIBERS ####
-        qos = rclpy.qos.QoSProfile(depth=10)
+        qos = rclpy.qos.QoSProfile(depth=1)
         qos.reliability = rclpy.qos.QoSReliabilityPolicy.BEST_EFFORT
         self.create_subscription(OccupancyGrid, '/map', self.map_callback, qos)
         self.create_subscription(Odometry, '/odom', self.odom_callback, qos)

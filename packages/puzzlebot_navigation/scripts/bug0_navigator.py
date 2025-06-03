@@ -96,11 +96,11 @@ class BugController(Node):
         self.goal_max_idx =  None # len(self.goal_x_coordinates) - 1 
         
         # +/- 2.0 degrees of precision
-        self.yaw_precision = 2.0 * (math.pi / 180) 
+        self.yaw_precision = 5.0 * (math.pi / 180) 
         
         # How quickly we need to turn when we need to make a heading
         # adjustment (rad/s)
-        self.turning_speed_yaw_adjustment = 0.25
+        self.turning_speed_yaw_adjustment = 0.35
         
         # Need to get within +/- 0.2 meter (20 cm) of (x,y) goal
         self.dist_precision = 0.2
@@ -527,12 +527,13 @@ class BugController(Node):
             if (self.rightfront_dist < self.dist_too_close_to_wall or self.right_dist < self.dist_too_close_to_wall):
                 # Getting too close to the wall
                 self.wall_following_state = "turn left too close"
-                msg.linear.x = self.forward_speed * 0.5
+                msg.linear.x = self.forward_speed * 0.25
                 msg.angular.z = self.turning_speed_wf_fast      
             else:           
                 # Go straight ahead
                 self.wall_following_state = "follow wall" 
                 msg.linear.x = self.forward_speed
+                msg.angular.z = -self.turning_speed_wf_slow
             
         else:
             self.wall_following_state = "turn left"
