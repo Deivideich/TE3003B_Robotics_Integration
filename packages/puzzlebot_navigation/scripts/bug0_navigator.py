@@ -59,7 +59,7 @@ class BugController(Node):
         ################### ROBOT CONTROL PARAMETERS ##################
         
         # Maximum forward speed of the robot in meters per second
-        self.forward_speed = 0.05 
+        self.forward_speed = 0.08 
         
         # Current position and orientation of the robot in the global 
         # reference frame
@@ -118,10 +118,10 @@ class BugController(Node):
         
         # Wall following distance threshold.
         # We want to try to keep within this distance from the wall.
-        self.dist_thresh_wf = 0.35 # in meters  
+        self.dist_thresh_wf = 0.4 # in meters  
         
         # We don't want to get too close to the wall though.
-        self.dist_too_close_to_wall = 0.2 # in meters
+        self.dist_too_close_to_wall = 0.25 # in meters
         
         self.bug0_switch = "ON"
         
@@ -138,7 +138,7 @@ class BugController(Node):
         
         # Anything less than this distance means we have encountered
         # a wall. Value determined through trial and error.
-        self.dist_thresh_bug0 = 0.3
+        self.dist_thresh_bug0 = 0.35
         
         # Leave point must be within +/- 0.1m of the start-goal line
         # in order to go from wall following mode to go to goal mode
@@ -260,7 +260,6 @@ class BugController(Node):
         if self.goal_x_coordinates == False and self.goal_y_coordinates == False:
             return
         
-        print(f"is way free: {self.is_way_to_goal_free}")
             
     def robot_pose_callback(self, msg):
         """
@@ -280,8 +279,6 @@ class BugController(Node):
         # Wait until we have received some goal destinations.
         if self.goal_x_coordinates == False and self.goal_y_coordinates == False:
             return
-        
-        return
         
         # See if the bug0 algorithm is activated. If yes, call bug0()
         if self.bug0_switch == "ON":
@@ -431,6 +428,9 @@ class BugController(Node):
         if self.sim:
             start_index = int((start_angle + 180))
             end_index = int((end_angle + 180))
+        else:
+            start_index = int(start_angle)
+            end_index = int(end_angle)
         # ensure between 0 and 360 degrees
         start_index = start_index % 360
         end_index = end_index % 360
@@ -489,7 +489,6 @@ class BugController(Node):
         front_covered = self.front_dist < d
         rightfront_covered = self.rightfront_dist < d
         right_covered = self.right_dist < d # or self.rightback_dist < d
-        
         
         if self.front_dist > d and self.rightfront_dist > d and not right_covered:
             self.wall_following_state = "search for wall"
