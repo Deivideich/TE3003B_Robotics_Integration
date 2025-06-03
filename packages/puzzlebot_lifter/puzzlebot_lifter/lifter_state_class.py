@@ -7,8 +7,12 @@ class LifterState(Enum):
     LEAVE_PALLET = 3
     STOP = 4
     
-class LifterStatus(Enum):
+class LifterDirection(Enum):
     STOP = 0
     MOVE_UP = 1
     MOVE_DOWN = 2
+    
+class SensorIDs(Enum):
+    UP = 0
+    DOWN = 1
     
