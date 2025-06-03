@@ -68,11 +68,11 @@ def generate_launch_description():
             description="Used to bin theta into the hash map"
         ),
         DeclareLaunchArgument(
-            name="translational_weight", default_value="0.5",
+            name="translational_weight", default_value="0.1",
             description="Scale used for translational distance in A*"
         ),
         DeclareLaunchArgument(
-            name="rotational_weight", default_value="0.5",
+            name="rotational_weight", default_value="0.9",
             description="Scale used for theta distance in A*"
         ),
         DeclareLaunchArgument(
