@@ -59,7 +59,7 @@ class BugController(Node):
         ################### ROBOT CONTROL PARAMETERS ##################
         
         # Maximum forward speed of the robot in meters per second
-        self.forward_speed = 0.08 
+        self.forward_speed = 0.05
         
         # Current position and orientation of the robot in the global 
         # reference frame
@@ -118,7 +118,7 @@ class BugController(Node):
         
         # Wall following distance threshold.
         # We want to try to keep within this distance from the wall.
-        self.dist_thresh_wf = 0.4 # in meters  
+        self.dist_thresh_wf = 0.35 # in meters  
         
         # We don't want to get too close to the wall though.
         self.dist_too_close_to_wall = 0.25 # in meters
@@ -138,7 +138,7 @@ class BugController(Node):
         
         # Anything less than this distance means we have encountered
         # a wall. Value determined through trial and error.
-        self.dist_thresh_bug0 = 0.35
+        self.dist_thresh_bug0 = 0.3
         
         # Leave point must be within +/- 0.1m of the start-goal line
         # in order to go from wall following mode to go to goal mode
@@ -227,6 +227,7 @@ class BugController(Node):
             
         
         # clean infs
+        self.curr_scan = msg
         
         if self.sim:
             self.right_dist = np.mean(msg.ranges[(90-range):(90+range)]) # Left
@@ -237,29 +238,55 @@ class BugController(Node):
             self.left_dist = np.mean(msg.ranges[(270-range):(270+range)])
             self.leftback_dist = np.mean(msg.ranges[(315-range):(315+range)]) # Left-back
         else:
-            self.front_dist = np.mean(np.concatenate([
-                msg.ranges[360-range:],
-                msg.ranges[:range]]))
-            self.leftfront_dist = np.mean(msg.ranges[(45-range):(45+range)]) # Left-front
-            self.left_dist = np.mean(msg.ranges[(90-range):(90+range)]) # Left
-            self.leftback_dist = np.mean(msg.ranges[(135-range):(135+range)]) # Left-back
-            self.rightfront_dist = np.mean(msg.ranges[(315-range):(315+range)]) # Right-front
-            self.right_dist = np.mean(msg.ranges[(270-range):(270+range)]) # Right
-            self.rightback_dist = np.mean(msg.ranges[(225-range):(225+range)]) # Right-back
+            self.front_dist = self.get_mean(360-range, range)
+            self.leftfront_dist = self.get_mean(45-range, 45+range) # Right-front
+            self.left_dist = self.get_mean(90-range, 90+range) # Right
+            self.leftback_dist = self.get_mean(135-range, 135+range) # Right-back
+            self.rightfront_dist = self.get_mean(315-range, 315+range) # Left-front
+            self.right_dist = self.get_mean(270-range, 270+range) # Left
+            self.rightback_dist = self.get_mean(225-range, 225+range) # Left-back
         
         # Print the distance values (in meters) for testing
-        self.get_logger().info('L:%f LF:%f F:%f RF:%f R:%f' % (
-            self.left_dist,
-            self.leftfront_dist,
-            self.front_dist,
-            self.rightfront_dist,
-            self.right_dist))
+        # self.get_logger().info('L:%f LF:%f F:%f RF:%f R:%f' % (
+        #     self.left_dist,
+        #     self.leftfront_dist,
+        #     self.front_dist,
+        #     self.rightfront_dist,
+        #     self.right_dist))
         
-        self.curr_scan = msg
+        
         
         if self.goal_x_coordinates == False and self.goal_y_coordinates == False:
             return
         
+        
+        
+    def get_mean(self, range_min, range_max):
+        """
+        Get the mean of the laser scan readings within a certain range.
+        """
+        
+        # Get the laser scan readings within the specified range
+        # check if wrap needed
+        if range_min > range_max:
+            readings = self.curr_scan.ranges[range_min:] + self.curr_scan.ranges[:range_max]
+        else:
+            readings = self.curr_scan.ranges[range_min:range_max]
+        
+        # Filter out inf values
+        readings = np.array(readings, dtype=float)
+        readings[readings == float('inf')] = float('nan')  # Replace inf with nan
+        readings = readings[~np.isnan(readings)]  # Remove nan values
+        # If there are no valid readings, return infinity
+        if len(readings) == 0:
+            # self.get_logger().warn('No valid laser scan readings found in the specified range.')
+            return float('inf')
+        
+        # Return the mean of the readings
+        if len(readings) > 0:
+            return sum(readings) / len(readings)
+        else:
+            return float('inf')
             
     def robot_pose_callback(self, msg):
         """
@@ -279,6 +306,7 @@ class BugController(Node):
         # Wait until we have received some goal destinations.
         if self.goal_x_coordinates == False and self.goal_y_coordinates == False:
             return
+        
         
         # See if the bug0 algorithm is activated. If yes, call bug0()
         if self.bug0_switch == "ON":
