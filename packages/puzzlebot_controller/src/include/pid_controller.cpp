@@ -4,8 +4,8 @@ namespace puzzlebot_controllers
 {
     namespace controllers 
     {
-        PIDController::PIDController(double linear_speed, double kP, double kD, double kI) : 
-                             kP_(kP), kD_(kD), kI_(kI), ControllerInterface(linear_speed) {}
+        PIDController::PIDController(double linear_speed, double angular_speed, double kP, double kD, double kI) : 
+                             kP_(kP), kD_(kD), kI_(kI), ControllerInterface(linear_speed, angular_speed) {}
 
         bool PIDController::computeCommand(
             const geometry_msgs::msg::PoseStamped& current_pose,

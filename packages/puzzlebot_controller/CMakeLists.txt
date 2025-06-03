@@ -14,6 +14,7 @@ find_package(nav_msgs REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
+find_package(angles REQUIRED)
 
 # Add model library
 add_library(puzzlebot_controller_include SHARED
@@ -30,6 +31,7 @@ ament_target_dependencies(puzzlebot_controller_include PUBLIC
     geometry_msgs
     tf2
     tf2_geometry_msgs
+    angles
     # Add dependencies like rclcpp if model needs ROS types directly
 )
 

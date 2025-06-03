@@ -36,7 +36,15 @@ def generate_launch_description():
             description="Desired linear speed for controller"
         ),
         DeclareLaunchArgument(
+            name="angular_speed", default_value="0.4",
+            description="Desired linear speed for controller"
+        ),
+        DeclareLaunchArgument(
             name="lookahead_distance", default_value="0.2",
+            description="Lookahead distance used in PurePursuit controller"
+        ),
+        DeclareLaunchArgument(
+            name="orientation_tolerance", default_value="0.15",
             description="Lookahead distance used in PurePursuit controller"
         ),
         DeclareLaunchArgument(
@@ -109,7 +117,9 @@ def generate_launch_description():
             parameters=[{
                 "controller_type" : LaunchConfiguration("controller_type"),
                 "linear_speed" : LaunchConfiguration("linear_speed"),
+                "angular_speed" : LaunchConfiguration("angular_speed"),
                 "lookahead_distance" : LaunchConfiguration("lookahead_distance"),
+                "orientation_tolerance" : LaunchConfiguration("orientation_tolerance"),
                 "kP" : LaunchConfiguration("kP"),
                 "kI" : LaunchConfiguration("kI"),
                 "kD" : LaunchConfiguration("kD"),

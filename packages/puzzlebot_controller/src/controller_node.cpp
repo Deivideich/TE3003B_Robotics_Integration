@@ -29,7 +29,9 @@ public:
     // Declare params
     controller_type_ = this->declare_parameter<std::string>("controller_type", "pure_pursuit");
     linear_speed_ = this->declare_parameter<float>("linear_speed", 0.1);
+    angular_speed_ = this->declare_parameter<float>("angular_speed", 0.25);
     lookahead_distance_ = this->declare_parameter<float>("lookahead_distance", 0.2);
+    orientation_tolerance_ = this->declare_parameter<float>("orientation_tolerance", 0.15);
     kP_ = this->declare_parameter<float>("kP", 0.2);
     kI_ = this->declare_parameter<float>("kI", 0.2);
     kD_ = this->declare_parameter<float>("kD", 0.2);
@@ -40,7 +42,9 @@ public:
   void get_parameters(){
     controller_type_ = this->get_parameter("controller_type").as_string();
     linear_speed_ = this->get_parameter("linear_speed").as_double();
+    angular_speed_ = this->get_parameter("angular_speed").as_double();
     lookahead_distance_ = this->get_parameter("lookahead_distance").as_double();
+    orientation_tolerance_ = this->get_parameter("orientation_tolerance").as_double();
     kP_ = this->get_parameter("kP").as_double();
     kI_ = this->get_parameter("kI").as_double();
     kD_ = this->get_parameter("kD").as_double();
@@ -52,11 +56,11 @@ public:
     get_parameters();
 
     if (controller_type_ == "pure_pursuit") {
-      controller_ = std::make_unique<puzzlebot_controllers::controllers::PurePursuitController>(linear_speed_, lookahead_distance_);
+      controller_ = std::make_unique<puzzlebot_controllers::controllers::PurePursuitController>(linear_speed_, angular_speed_, lookahead_distance_, orientation_tolerance_);
     } else if (controller_type_ == "pid") {
-      controller_ = std::make_unique<puzzlebot_controllers::controllers::PIDController>(linear_speed_, kP_, kD_, kI_);
+      controller_ = std::make_unique<puzzlebot_controllers::controllers::PIDController>(linear_speed_, angular_speed_, kP_, kD_, kI_);
     // } else if (controller_type_ == "mpc") {
-      // controller_ = std::make_unique<puzzlebot_controllers::controllers::MPCController>(linear_speed_);
+      // controller_ = std::make_unique<puzzlebot_controllers::controllers::MPCController>(linear_speed_, angular_speed_);
     } else {
       RCLCPP_ERROR(this->get_logger(), "Unknown controller type: %s", controller_type_.c_str());
       rclcpp::shutdown();
@@ -219,8 +223,9 @@ private:
 
   std::unique_ptr<puzzlebot_controllers::controllers::ControllerInterface> controller_;
   std::unique_ptr<puzzlebot_controllers::controllers::Bug2Controller> bug_controller_;
-  double linear_speed_;
-  double lookahead_distance_;
+  
+  double linear_speed_, angular_speed_;
+  double lookahead_distance_, orientation_tolerance_;
   double kP_, kD_, kI_;
 };
 
