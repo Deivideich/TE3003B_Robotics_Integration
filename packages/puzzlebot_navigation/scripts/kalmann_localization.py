@@ -20,6 +20,7 @@ class KalmanNode(Node):
     def __init__(self):
         super().__init__('kalman_node')
 
+
         # SUBSCRIBERS
         self.create_subscription(JointState, '/joint_states', self.joint_state_callback, 10)
         self.create_subscription(Int32, '/aruco_id', self.aruco_callback, 10) #Subscriber del ARUCO id
@@ -27,7 +28,8 @@ class KalmanNode(Node):
 
         #PUBLISHERS
         # self.pub_pos = self.create_publisher(PoseStamped, '/estimated_pose', 10)
-        self.pub_pos = self.create_publisher(PoseWithCovarianceStamped, '/estimated_pose', 10)
+        self.pub_pos = self.create_publisher(PoseWithCovarianceStamped, '/ekf_pose', 10)
+        self.inital_pose_pub = self.create_publisher(PoseWithCovarianceStamped, '/initialpose', 10)
         
         # debug marker publisher to see projected landmarks
         self.debug_aruco_marker_pub = self.create_publisher(Marker, '/debug_aruco', 10)
@@ -85,6 +87,7 @@ class KalmanNode(Node):
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
         self.tf_broadcaster = TransformBroadcaster(self)
+
         time.sleep(1)
 
     def obtain_Q(self):
@@ -381,6 +384,22 @@ class KalmanNode(Node):
 
         msg.pose.covariance = ros_cov
 
+        std_x = np.sqrt(self.Sigma_cov[0, 0])
+        std_y = np.sqrt(self.Sigma_cov[1, 1])
+        std_theta = np.sqrt(self.Sigma_cov[2, 2])  # radians
+
+        # Define your thresholds
+        max_std_x = 0.1     # 20 cm
+        max_std_y = 0.1     # 20 cm
+        max_std_theta = np.deg2rad(5)  # ~10 degrees
+
+        self.get_logger().info(f"std_x: {round(std_x,3)} std_y: {round(std_y,3)} std_theta: {round(std_theta,3)}")
+        if std_x < max_std_x and std_y < max_std_y and std_theta < max_std_theta:
+            self.get_logger().info("Pose estimate is confident (low covariance).")
+            self.inital_pose_pub.publish(msg)
+        else:
+            self.get_logger().info("Pose estimate is uncertain (high covariance).")
+        
         self.pub_pos.publish(msg) 
         
         
