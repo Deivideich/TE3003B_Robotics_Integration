@@ -168,7 +168,7 @@ class BugController(Node):
         self.leave_point_to_hit_point_diff = 0.25 # in meters
         
         # the range of the scanner to assume way to goal is free
-        self.range_scanner_free = 90 # in degrees
+        self.range_scanner_free = 60 # in degrees
         
         self.get_logger().info('BugController node has been started.')
         
