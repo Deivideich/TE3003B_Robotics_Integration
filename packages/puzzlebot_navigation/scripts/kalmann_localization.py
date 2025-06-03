@@ -30,6 +30,7 @@ class KalmanNode(Node):
         # create broadcast tf param
         self.declare_parameter('broadcast_tf', True)
         self.broadcast_tf = self.get_parameter('broadcast_tf').get_parameter_value().bool_value
+        self.initial_pose = False
 
         # SUBSCRIBERS
         qos = rclpy.qos.QoSProfile(depth=1)
@@ -88,7 +89,7 @@ class KalmanNode(Node):
         #Camera error, not tuned
         self.R_error = np.array([[0.00000001, 0, 0],
                                  [0, 0.00000001, 0],
-                                 [0, 0, 0.25]]) # Measurement noise covariance matrix
+                                 [0, 0, 0.000001]]) # Measurement noise covariance matrix
                 
         #FLAGS FOR SUB CALLBACKS
         self.landmark_status = False
@@ -428,8 +429,9 @@ class KalmanNode(Node):
         max_std_y = 0.1     # 20 cm
         max_std_theta = np.deg2rad(5)  # ~10 degrees
 
-        if (abs(self.aruco_diff_x) < 0.05 and abs(self.aruco_diff_y) < 0.05 and abs(self.aruco_diff_angle) < 0.1) and \
+        if (abs(self.aruco_diff_x) < 0.05 and abs(self.aruco_diff_y) < 0.05 and abs(self.aruco_diff_angle) < np.deg2rad(30)) and \
             (time.time() - self.last_estimated_pose_time > self.publish_estimated_pose_interval):
+            self.initial_pose = True
             self.get_logger().info(f"Aruco {self.marker_id} is within acceptable range, sending estimated pose.")
             self.inital_pose_pub.publish(msg)
             self.last_estimated_pose_time = time.time()
@@ -472,11 +474,11 @@ class KalmanNode(Node):
 
         # self.get_logger().info(f'Pose actual: x={self.uPose[0,0]:.2f}, y={self.uPose[1,0]:.2f}, θ={self.uPose[2,0]:.2f}')
         
-        if self.broadcast_tf:
+        if self.broadcast_tf and not self.initial_pose:
             self.broadcast_transform()
         self.set_previous()
         elapsed_time = time.perf_counter() - start_time
-        # self.get_logger().info(f"[⏱️] Tiempo del ciclo Kalman: {elapsed_time:.4f} segundos")
+        self.get_logger().info(f"[⏱️] Tiempo del ciclo Kalman: {elapsed_time:.4f} segundos")
 
 
     def timer_callback(self):

@@ -65,7 +65,6 @@ class MCLNode(Node):
         self.map_received = False
 
         self.last_odom = None
-        self.last_odom = None
         self.odom_received = False
         self.odom_covariance = np.array([0.2, 0.2, 0.2, 0.2, 0.2, 0.2])
         self.delta_motion = []
@@ -73,6 +72,8 @@ class MCLNode(Node):
         self.last_scan = None
         self.scan_received = False        
         self.predictionCounter = 0
+
+        self.pose_overwriten = False
 
         #### TF HANDLERS ####
         self.tf_buffer = tf2_ros.Buffer()
@@ -176,6 +177,7 @@ class MCLNode(Node):
         # Initialize particles with the new pose
         self.particles = [(x, y, theta) for _ in range(self.num_particles)]
         self.resample_particles()
+        self.pose_overwriten = True
 
             
     def initialize_particles(self):
@@ -552,7 +554,8 @@ class MCLNode(Node):
                 self.predictionCounter = 0
 
         self.publish_particles()
-        self.broadcast_transform()
+        if self.pose_overwriten:
+            self.broadcast_transform()
         self.publish_estimated_pose()   
 
         # self.get_logger().info(f"Elapsed time: {time() - self.prev_time}")
