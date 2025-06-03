@@ -386,7 +386,7 @@ private:
   double delta_angle_;
   double deviation_threshold_;
   
-  std::unordered_map<bool,std::string> pose_topics = {{false, "/kalman_pose"}, {true, "/mcl_pose"}};
+  std::unordered_map<bool,std::string> pose_topics = {{false, "/ekf_pose"}, {true, "/mcl_pose"}};
 
   double linear_speed_, angular_speed_;
   double lookahead_distance_, orientation_tolerance_;

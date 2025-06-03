@@ -19,11 +19,16 @@ from visualization_msgs.msg import Marker
 class KalmanNode(Node):
     def __init__(self):
         super().__init__('kalman_node')
-
+        
+        # create broadcast tf param
+        self.declare_parameter('broadcast_tf', True)
+        self.broadcast_tf = self.get_parameter('broadcast_tf').get_parameter_value().bool_value
 
         # SUBSCRIBERS
-        self.create_subscription(JointState, '/joint_states', self.joint_state_callback, 10)
-        self.create_subscription(Int32, '/aruco_id', self.aruco_callback, 10) #Subscriber del ARUCO id
+        qos = rclpy.qos.QoSProfile(depth=1)
+        qos.reliability = rclpy.qos.QoSReliabilityPolicy.BEST_EFFORT
+        self.create_subscription(JointState, '/joint_states', self.joint_state_callback, qos)
+        self.create_subscription(Int32, '/aruco_id', self.aruco_callback, qos) #Subscriber del ARUCO id
         # Aqui tiene que ir el subscriber que me de la posicion de los marcadores
 
         #PUBLISHERS
@@ -35,7 +40,7 @@ class KalmanNode(Node):
         self.debug_aruco_marker_pub = self.create_publisher(Marker, '/debug_aruco', 10)
         self.debug_aruco_obs_marker_pub = self.create_publisher(Marker, '/debug_aruco_obs', 10)
 
-        self.timer = self.create_timer(0.05, self.timer_callback)
+        self.timer = self.create_timer(0.02, self.timer_callback)
 
         #Variables for Dead Reckoning
         self.wheel_radius = 0.05
@@ -69,14 +74,14 @@ class KalmanNode(Node):
         
         #Q error for model
         self.error_Q = np.zeros((3,3)) # Process noise covariance matrix
-        self.K_R = 0.1 # 0.30406416057210744
-        self.K_L = 0.2 # 0.38899148975615183
+        self.K_R = 0.3 # 0.30406416057210744
+        self.K_L = 0.4 # 0.38899148975615183
         self.K_RB = 0.011
         self.K_LB = 0.002
         #Camera error, not tuned
-        self.R_error = np.array([[0.05, 0, 0],
-                                 [0, 0.05, 0],
-                                 [0, 0, 0.05]]) # Measurement noise covariance matrix
+        self.R_error = np.array([[0.00000001, 0, 0],
+                                 [0, 0.00000001, 0],
+                                 [0, 0, 0.25]]) # Measurement noise covariance matrix
                 
         #FLAGS FOR SUB CALLBACKS
         self.landmark_status = False
@@ -149,27 +154,43 @@ class KalmanNode(Node):
     def obtain_tfs(self):
         try:
             now = self.get_clock().now().to_msg()
+            # move now 0.05 to the past
+            now = rclpy.time.Time.from_msg(now) - rclpy.duration.Duration(seconds=0.1)
+            now = now.to_msg()
+            
             self.aruco_tf = self.tf_buffer.lookup_transform(
                     'map',  # target frame - map
                     f'aruco_{self.marker_id}',      # source frame - aruco
-                    Time())  # TODO    
-            
+                    now,
+                    rclpy.duration.Duration(seconds=0.05))  # TODO    
+
             self.aruco_map_angle = self.aruco_yaw(self.aruco_tf.transform.rotation)
-            
-            
+
             self.aruco_to_robot_tf = self.tf_buffer.lookup_transform(
                 'base_link',           # target frame - base footprint
                 f'aruco_{self.marker_id}_ob',      # source frame - aruco
                 Time())  #TODO
             
+            x = self.aruco_to_robot_tf.transform.translation.x
+            y = self.aruco_to_robot_tf.transform.translation.y
+            
+            q = self.aruco_to_robot_tf.transform.rotation
+            
+            aruco_to_robot_angle = (math.atan2(y, x) + np.pi) % (2 * np.pi) - np.pi
+            
+            if abs(aruco_to_robot_angle) > 0.4:
+                self.get_logger().warn(f"Aruco ROBOT angle is too large: {aruco_to_robot_angle}. Skipping update.")
+                return False
+            
+            self.get_logger().info(f"Aruco ROBOT angle: {aruco_to_robot_angle}")
+            
             self.aruco_rot_tf = self.tf_buffer.lookup_transform(
                 'map',           # target frame - base footprint
                 f'aruco_{self.marker_id}_ob',      # source frame - aruco
-                Time())  #TODO
+                Time())
             
             self.aruco_robot_angle = self.aruco_yaw(self.aruco_rot_tf.transform.rotation)
-            self.get_logger().info(f"Aruco {self.marker_id} ROBOT angle: {self.aruco_robot_angle}")
-
+            
         except Exception as e:
             self.get_logger().warn(f'Error obtaining transforms: {str(e)}')
             return False
@@ -180,8 +201,8 @@ class KalmanNode(Node):
     def aruco_yaw(self, rotation):
         try:
             quat = [rotation.x, rotation.y, rotation.z, rotation.w]
-            _, pitch, yaw = tf_transformations.euler_from_quaternion(quat)
-            return pitch
+            roll, pitch, yaw = tf_transformations.euler_from_quaternion(quat)
+            return yaw
         except Exception as e:
             self.get_logger().warn(f"Error converting quaternion to euler: {str(e)}")
             return 0.0
@@ -202,12 +223,13 @@ class KalmanNode(Node):
         # angle made from quat to robot
         angle = math.atan2(diff_y, diff_x) - self.uHat[2, 0] #TODO
         
-        aruco_angle = self.aruco_map_angle - self.uHat[2, 0] #TODO
+        aruco_angle = self.aruco_map_angle # - self.uHat[2, 0] #TODO
+        aruco_angle = (aruco_angle + np.pi) % (2 * np.pi) - np.pi # Normalize angle to [-pi, pi]
         
-        self.get_logger().info(f"Aruco {self.marker_id} MAP angle: {aruco_angle}")
+        # self.get_logger().info(f"Aruco {self.marker_id} MAP angle: {aruco_angle}")
         
         self.zHat[1, 0] = (angle + np.pi) % (2 * np.pi) - np.pi
-        self.zHat[2, 0] = (aruco_angle + np.pi) % (2 * np.pi) - np.pi #TODO
+        self.zHat[2, 0] = aruco_angle
 
         # noise = np.random.normal(0, 0.1, size=self.zHat.shape)
         # self.zHat += noise 
@@ -258,22 +280,16 @@ class KalmanNode(Node):
         x = self.aruco_to_robot_tf.transform.translation.x
         y = self.aruco_to_robot_tf.transform.translation.y
         
-        self.get_logger().info(f"Saw aructo at x: {x}, y: {y}")
-
         q = self.aruco_to_robot_tf.transform.rotation
         
 
         z_vec[0, 0] = self.euclidean_distance(x, y)
         z_vec[1, 0] = (math.atan2(y, x) + np.pi) % (2 * np.pi) - np.pi
         
-        self.aruco_robot_angle -= self.uHat[2, 0] #TODO
+        self.aruco_robot_angle # -= self.uHat[2, 0] #TODO
         z_vec[2, 0] = (self.aruco_robot_angle + np.pi) % (2 * np.pi) - np.pi #TODO
+        # self.get_logger().info(f"Aruco {self.marker_id} ROBOT angle: {z_vec[2, 0]}")
         
-        self.get_logger().info(f"Saw aruco at angle: {z_vec[1,0]}")
-
-        self.get_logger().info(f'z =\n{z_vec}\nzHat =\n{self.zHat}\ndiff =\n{z_vec - self.zHat}')
-
-
         self.uPose = self.uHat + self.Kalmann_gain @ (z_vec - self.zHat)
 
 
@@ -393,12 +409,13 @@ class KalmanNode(Node):
         max_std_y = 0.1     # 20 cm
         max_std_theta = np.deg2rad(5)  # ~10 degrees
 
-        self.get_logger().info(f"std_x: {round(std_x,3)} std_y: {round(std_y,3)} std_theta: {round(std_theta,3)}")
+        # self.get_logger().info(f"std_x: {round(std_x,3)} std_y: {round(std_y,3)} std_theta: {round(std_theta,3)}")
         if std_x < max_std_x and std_y < max_std_y and std_theta < max_std_theta:
-            self.get_logger().info("Pose estimate is confident (low covariance).")
+            # self.get_logger().info("Pose estimate is confident (low covariance).")
             self.inital_pose_pub.publish(msg)
         else:
-            self.get_logger().info("Pose estimate is uncertain (high covariance).")
+            pass
+            # self.get_logger().info("Pose estimate is uncertain (high covariance).")
         
         self.pub_pos.publish(msg) 
         
@@ -413,7 +430,7 @@ class KalmanNode(Node):
     def Kalmann_filter(self):
         #Obtain covariance
         # self.get_logger().info('Obtaining Q')
-        self.landmark_status = False
+        
         start_time = time.perf_counter()
         self.obtain_Q()
         # self.get_logger().info('Dead Reckoning')
@@ -429,8 +446,8 @@ class KalmanNode(Node):
             self.calc_KalmannGain()
             # self.get_logger().info(f'Kalman Gain:\n{self.Kalmann_gain}')
             self.calc_miu()
-            self.calc_sigma()        
-            
+            self.calc_sigma()  
+            self.landmark_status = False      
         # If landmark is not visible, use prediction (Dead Reckoning only)
         else:
             self.uPose = self.uHat
@@ -438,10 +455,11 @@ class KalmanNode(Node):
 
         # self.get_logger().info(f'Pose actual: x={self.uPose[0,0]:.2f}, y={self.uPose[1,0]:.2f}, θ={self.uPose[2,0]:.2f}')
         
-        self.broadcast_transform() #Broadcast transform between map and odom
+        if self.broadcast_tf:
+            self.broadcast_transform()
         self.set_previous()
         elapsed_time = time.perf_counter() - start_time
-        self.get_logger().info(f"[⏱️] Tiempo del ciclo Kalman: {elapsed_time:.4f} segundos")
+        # self.get_logger().info(f"[⏱️] Tiempo del ciclo Kalman: {elapsed_time:.4f} segundos")
 
 
     def timer_callback(self):
