@@ -59,7 +59,7 @@ int main(int argc, char **argv)
         });
 
     rclcpp::Rate rate(10);
-    while (rclcpp::ok() && !done) {
+    while (rclcpp::ok()) {
         rclcpp::spin_some(node);
 
         if (goal_pose && start_pose) {
@@ -76,7 +76,7 @@ int main(int argc, char **argv)
             auto future = client->async_send_request(request);
 
             auto status = wait_for_future_with_timeout<puzzlebot_interfaces::srv::PlanPath>(
-                future, node->get_node_base_interface(), 5s);
+                future, node->get_node_base_interface(), 1s);
 
             if (status == std::future_status::timeout) {
                 RCLCPP_ERROR(node->get_logger(), "Service call timed out");
@@ -91,7 +91,7 @@ int main(int argc, char **argv)
                 }
             }
 
-            done = true;  // Stop after one execution
+            goal_pose = nullptr;
         }
 
         rate.sleep();

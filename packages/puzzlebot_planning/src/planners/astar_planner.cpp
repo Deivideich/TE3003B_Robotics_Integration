@@ -139,7 +139,7 @@ namespace puzzlebot_planning::planners
     }
     
 
-    bool AStarPlanner::findPath()
+    bool AStarPlanner::plan()
     {
         if (grid_.empty() || grid_[0].empty()) {
             std::cerr << "Grid is empty!" << std::endl;
@@ -233,10 +233,6 @@ namespace puzzlebot_planning::planners
                     // Create a new state for the neighbor
                     SE2StatePtr neighbor_state = std::make_shared<SE2State>(new_x, new_y, new_theta);
 
-                    // Check if the neighbor state is collision-free
-                    if (!isFootPrintCollisionFree(neighbor_state))
-                        continue;
-
                     // Calculate costs
                     double g_cost = current_node->g_cost + heuristic(neighbor_state, current_node->state);;
                     double h_cost = heuristic(neighbor_state, goal_);
@@ -246,8 +242,13 @@ namespace puzzlebot_planning::planners
                     auto it = closed_set.find({new_grid_y, new_grid_x, new_theta_bin});
                     if (it != closed_set.end() && it->second->f_cost <= f_cost)
                         continue; // Skip this neighbor
+                    else if (!isFootPrintCollisionFree(neighbor_state))
+                        continue;
                     else if (it != closed_set.end())
                         closed_set.erase(it); // Remove from closed set if we found a better path
+                    
+                    // Check if the neighbor state is collision-free
+                    
                     
                     Node* neighbor_node = new Node();
                     neighbor_node->state = neighbor_state;

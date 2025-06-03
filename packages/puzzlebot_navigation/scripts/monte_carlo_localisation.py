@@ -2,7 +2,7 @@
 import math
 import numpy as np
 import ctypes
-from sklearn.cluster import DBSCAN
+from time import time
 
 import rclpy
 from rclpy.node import Node
@@ -17,17 +17,18 @@ import os
 import ament_index_python.packages
 
 package_prefix = ament_index_python.packages.get_package_prefix('puzzlebot_navigation')
-cpp_mcl = os.path.join(package_prefix, 'lib', 'puzzlebot_navigation', 'mcl_utils.so')
+cpp_mcl = os.path.join(package_prefix, 'lib', 'puzzlebot_navigation', 'libmcl_utils.so')
 
 ARGS = {
     'useClustering': False,
-    'numParticles': 1000,
+    'numParticles': 300,
+    'scanStep' : 5,
     'minClusterDistance': 0.5,
     'clusterEps': 0.5,
     'clusterMinSamples': 0.05,
     'scaleRdParticles': 0.0,
-    'minDistance': 0.05,
-    'minAngle': 10.0,
+    'minDistance': 0.005,
+    'minAngle': 5.0,
     'repropagateCountNeeded': 1,
     'HZ' : 20.0,
 }
@@ -38,6 +39,7 @@ class MCLNode(Node):
         
         self.declare_parameter('useClustering', ARGS['useClustering'])
         self.declare_parameter('numParticles', ARGS['numParticles'])
+        self.declare_parameter('scanStep', ARGS['scanStep'])
         self.declare_parameter('minClusterDistance', ARGS['minClusterDistance'])
         self.declare_parameter('clusterEps', ARGS['clusterEps'])
         self.declare_parameter('clusterMinSamples', ARGS['clusterMinSamples'])
@@ -52,7 +54,10 @@ class MCLNode(Node):
         
         self.particles = []        
         self.particle_weights = np.zeros(self.num_particles)
-        self.cluster_dbscan = DBSCAN(eps=self.cluster_eps, min_samples=int(self.cluster_min_samples), metric='euclidean', n_jobs=-1)
+        
+        if self.useClustering:
+            from sklearn.cluster import DBSCAN
+            self.cluster_dbscan = DBSCAN(eps=self.cluster_eps, min_samples=int(self.cluster_min_samples), metric='euclidean', n_jobs=-1)
         
         self.map = None
         self.map_received = False
@@ -93,6 +98,7 @@ class MCLNode(Node):
     def initialize_params(self):
         self.useClustering = self.get_parameter('useClustering').get_parameter_value().bool_value
         self.num_particles = self.get_parameter('numParticles').get_parameter_value().integer_value
+        self.scan_step = self.get_parameter('scanStep').get_parameter_value().integer_value
         self.num_dimensions = 3
         self.min_cluster_distance = self.get_parameter('minClusterDistance').get_parameter_value().double_value
         self.cluster_eps = self.get_parameter('clusterEps').get_parameter_value().double_value
@@ -187,7 +193,7 @@ class MCLNode(Node):
             theta = np.random.uniform(-np.pi, np.pi)
             self.particles.append((x, y, theta))
 
-        self.publish_particles()
+        # self.publish_particles()
     
     
     def publish_particles(self):
@@ -225,8 +231,9 @@ class MCLNode(Node):
 
         scan_msg = msg
         scan_msg.header.stamp = self.get_clock().now().to_msg()
-        
-        # Publish the scan message
+        scan_msg.angle_increment = scan_msg.angle_increment * self.scan_step
+        scan_msg.ranges = scan_msg.ranges[::self.scan_step]
+        scan_msg.intensities = scan_msg.intensities[::self.scan_step] if scan_msg.intensities else []
         self.scan_pub.publish(scan_msg)
 
     def odom_callback(self, msg):
@@ -266,6 +273,7 @@ class MCLNode(Node):
                 ctypes.POINTER(ctypes.c_float),    # scan_ranges
                 ctypes.c_int,                      # scan_size
                 ctypes.c_float,                    # max_range
+                ctypes.c_int,                      # scan_step
                 ctypes.c_int,                      # num_particles
                 ctypes.c_int,                      # num_dimensions
                 ctypes.POINTER(ctypes.c_float),    # particles
@@ -295,6 +303,7 @@ class MCLNode(Node):
                 sranges_ctypes,
                 len(scan_angles),
                 max_range,
+                self.scan_step,
                 self.num_particles,
                 self.num_dimensions,
                 particles_ctypes,
@@ -311,7 +320,6 @@ class MCLNode(Node):
         except Exception as e:
             self.get_logger().warn(f"{str(e)}")
 
-
     def compute_odometry_delta(self, last_odom, current_odom):
         def get_pose(odom):
             pos = odom.pose.pose.position
@@ -322,10 +330,17 @@ class MCLNode(Node):
         x1, y1, theta1 = get_pose(last_odom)
         x2, y2, theta2 = get_pose(current_odom)
 
-        dx = x2 - x1
-        dy = y2 - y1
+        # Delta in world frame
+        dx_world = x2 - x1
+        dy_world = y2 - y1
         dtheta = self.angle_diff(theta2, theta1)
-        return dx, dy, dtheta
+
+        # Transform delta into robot (local) frame at time t1
+        dx_local = math.cos(theta1) * dx_world + math.sin(theta1) * dy_world
+        dy_local = -math.sin(theta1) * dx_world + math.cos(theta1) * dy_world
+
+        return dx_local, dy_local, dtheta
+
     
     def angle_diff(self, a, b):
         diff = a - b
@@ -333,6 +348,10 @@ class MCLNode(Node):
 
     #TODO: this function is good but slow, DBSSCAN compute wise is not efficient, need to find a better way to cluster
     def estimate_pose(self):
+        if hasattr(self, 'maxParticle'):
+            return np.array([float(self.maxParticle[0]), float(self.maxParticle[1]), float(self.maxParticle[2])])
+        else: 
+            return np.array([0.0, 0.0, 0.0])
         if self.useClustering:
             clusters = self.cluster_dbscan.fit(self.particles)
             unique_labels = set(clusters.labels_)
@@ -400,17 +419,6 @@ class MCLNode(Node):
         if success:
             self.particles  = resampled_particles.reshape((self.num_particles, 3)).tolist()
 
-            free_indices = np.argwhere(self.map_data == 0)  # 0 = free space
-
-            for _ in range(int(self.num_particles * self.scale_rd_particles)):
-                particle_rd_idx = np.random.randint(0, self.num_particles)
-                new_y, new_x = free_indices[np.random.choice(len(free_indices))]
-                
-                new_x = new_x * self.map_resolution + self.map_origin.x
-                new_y = new_y * self.map_resolution + self.map_origin.y
-                new_theta = np.random.uniform(-np.pi, np.pi)
-                self.particles[particle_rd_idx] = (new_x, new_y, new_theta)
-
             self.particle_weights = np.ones(self.num_particles)
             self.particle_weights /= self.num_particles
         else:
@@ -420,26 +428,27 @@ class MCLNode(Node):
     def motion_update(self, delta):
         dx, dy, dtheta = delta
 
-        delta_trans = math.sqrt(dx**2 + dy**2)
-        delta_rot = math.atan2(dy, dx)
-        
-        trans_noise_coeff = self.odom_covariance[2] * abs(delta_trans) + self.odom_covariance[3] * abs(dtheta)
-        rot_noise_coeff = self.odom_covariance[0] * abs(dtheta) + self.odom_covariance[1] * abs(delta_trans)
+        motion_noise = {
+            "x": 0.01,
+            "y": 0.01,
+            "theta": 0.01
+        }
 
-        for i, (x, y, theta) in enumerate(self.particles):
-            delta_rot1 = self.angle_diff(math.atan2(dy, dx), theta)
-            delta_rot2 = self.angle_diff(dtheta, delta_rot1)
+        new_particles = []
+        for x, y, theta in self.particles:
+            # Transform robot-frame delta to world frame using particle's heading
+            dx_world = dx * math.cos(theta) - dy * math.sin(theta)
+            dy_world = dx * math.sin(theta) + dy * math.cos(theta)
 
-            delta_trans_noisy = delta_trans + np.random.normal(0, trans_noise_coeff)
-            delta_rot1_noisy = delta_rot1 + np.random.normal(0, rot_noise_coeff)
-            delta_rot2_noisy = delta_rot2 + np.random.normal(0, rot_noise_coeff)
+            x_new = x + dx_world + np.random.normal(0, motion_noise["x"])
+            y_new = y + dy_world + np.random.normal(0, motion_noise["y"])
+            theta_new = theta + dtheta + np.random.normal(0, motion_noise["theta"])
+            theta_new =  (theta_new + math.pi) % (2 * math.pi) - math.pi 
 
-            x_new = x + delta_trans_noisy * math.cos(theta + delta_rot1_noisy)
-            y_new = y + delta_trans_noisy * math.sin(theta + delta_rot1_noisy)
-            theta_new = theta + delta_rot1_noisy + delta_rot2_noisy
-            theta_new = (theta_new + math.pi) % (2 * math.pi) - math.pi
+            new_particles.append((x_new, y_new, theta_new))
 
-            self.particles[i] = (x_new, y_new, theta_new)
+        self.particles = new_particles
+
 
     def broadcast_transform(self):
         try:
@@ -507,13 +516,14 @@ class MCLNode(Node):
         if len(self.delta_motion) <= 0:
             return
         
+        self.prev_time = time()        
         diffDistance = math.sqrt(self.delta_motion[0]**2 + self.delta_motion[1]**2)
         diffAngle = abs(self.delta_motion[2])*180.0/3.141592
 
         if diffDistance > self.min_distance or diffAngle > self.min_angle:
             self.motion_update(self.delta_motion)       
             self.last_odom = self.odom
-            
+
             self.sensor_update()
             
             self.predictionCounter += 1
@@ -522,11 +532,12 @@ class MCLNode(Node):
             if (neff > self.num_particles * 0.1) and (self.predictionCounter >= self.repropagateCountNeeded):
                 self.resample_particles()
                 self.predictionCounter = 0
-        
 
-        self.publish_particles()
+        # self.publish_particles()
         self.broadcast_transform()
         self.publish_estimated_pose()   
+
+        self.get_logger().info(f"Elapsed time: {time() - self.prev_time}")
 
 
 def main(args=None):
