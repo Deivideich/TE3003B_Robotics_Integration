@@ -3,8 +3,9 @@ import rclpy
 from rclpy.node import Node
 from puzzlebot_interfaces.srv import AudioInfo
 from scipy.io import wavfile
-from std_msgs.msg import Float64MultiArray
+from std_msgs.msg import Float32MultiArray
 import sounddevice as sd
+import soundfile as sf
 import numpy as np
 
 import os
@@ -28,7 +29,7 @@ class AudioClient(Node):
     
     
     
-    def eliminate_noise(self, audio, fs, threshold, padding_ms=50):
+    def eliminate_noise(self, audio, fs, threshold, padding_ms=100):
         # Placeholder for noise elimination logic
         # This function should implement the noise elimination algorithm
         # For now, we just return the original audio
@@ -44,11 +45,9 @@ class AudioClient(Node):
         energy = np.zeros(num_frames)
         
         for i in range(num_frames):
-            start = i * hop_len
+            start = (i) * hop_len
             frame = audio[start:start + frame_len]
-            energy[i] = np.sum(frame ** 2) / frame_len
-
-            
+            energy[i] = np.sum(frame ** 2) / frame_len         
         
         energy_thresh = threshold * np.max(energy)
         voice_flags = (energy > energy_thresh)
@@ -56,40 +55,33 @@ class AudioClient(Node):
 
         if len(indices) == 0:
             self.get_logger().info('Audio is empty, do it again')
-            return audio
+            return False, audio
         
         padding_frames = int(fs * padding_ms / 1000)
         start_sample = max(0, indices[0] * hop_len - padding_frames)
+        end_sample = min(len(audio), indices[-1] * hop_len + frame_len + padding_frames)
+        return True, audio[start_sample:end_sample]
+
         
-
-        if np.any(voice_flags):
-            first_voice_frame = np.argmax(voice_flags)   
-            last_voice_frame = len(voice_flags) - np.argmax(voice_flags[::-1]) - 1  
-
-            first_voice_frame = max(0, first_voice_frame - padding_frames)
-            last_voice_frame = min(num_frames - 1, last_voice_frame + padding_frames)
-
-            start = first_voice_frame * hop_len
-            end = last_voice_frame * hop_len + frame_len
-            end = min(end, len(audio))
-            return True, audio[start:end] 
-        else:
-            self.get_logger().warn('No voice detected in the audio.')
-            return False, np.zeros(0)
 
     def send_request(self):
         # for filename in os.listdir(codebook_path):
         #     if filename.endswith('.wav'):
         #         audioPath = os.path.join(codebook_path, filename)
         #         audio = self.load_audio(audioPath)
-        flag, clean_audio = self.eliminate_noise(self.audio, fs=16000)
+        flag, clean_audio = self.eliminate_noise(self.audio, fs=16000, threshold=0.01) #0.018
         
         if not flag:
             self.get_logger().warn('No voice detected in the audio.')
             return None
         
-        audio_msg = Float64MultiArray()
-        audio_msg.data = self.audio.astype(float).tolist()
+        
+        
+        audio_msg = Float32MultiArray()
+        audio_msg.data = clean_audio.astype(float).tolist()
+
+        audio = np.array(audio_msg.data)
+        sf.write('audio_debug_ros2_client.wav', audio, 16000)
 
         self.request.audio = audio_msg  # Replace with actual audio data
         future = self.client.call_async(self.request)
@@ -97,11 +89,14 @@ class AudioClient(Node):
         return future.result()
 
 
-def record_audio(duration=5, fs=16000):
-        audio = sd.rec(int(duration * fs), samplerate=fs, channels=1, dtype='float64')
-        sd.wait()
-        print(f'Audio recorded {audio}')
-        return audio
+def record_audio(duration=3, fs=16000):
+    sd.sleep(500)
+    print('Recording')
+    audio = sd.rec(int(duration * fs), samplerate=fs, channels=1, dtype='int16')
+    sd.wait()
+    print(f'Audio recorded {audio}')
+    sf.write('audio_original_ros2_client.wav', audio, 16000)
+    return audio
 
 def main(args=None):
     audio = record_audio(duration=5, fs=16000)

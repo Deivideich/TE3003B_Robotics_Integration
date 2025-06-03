@@ -1,4 +1,4 @@
-std_msgs/Float64MultiArray audio
+std_msgs/Float32MultiArray audio
 ---
 bool result
 std_msgs/String prediction
