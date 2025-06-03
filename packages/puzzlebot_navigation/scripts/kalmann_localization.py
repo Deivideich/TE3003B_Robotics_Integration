@@ -67,14 +67,14 @@ class KalmanNode(Node):
         
         #Q error for model
         self.error_Q = np.zeros((3,3)) # Process noise covariance matrix
-        self.K_R = 0.1 # 0.30406416057210744
-        self.K_L = 0.2 # 0.38899148975615183
-        self.K_RB = 0.011
-        self.K_LB = 0.002
+        self.K_R = 0.2 # 0.30406416057210744
+        self.K_L = 0.35 # 0.38899148975615183
+        self.K_RB = 0.006
+        self.K_LB = 0.006
         #Camera error, not tuned
-        self.R_error = np.array([[0.05, 0, 0],
-                                 [0, 0.05, 0],
-                                 [0, 0, 0.05]]) # Measurement noise covariance matrix
+        self.R_error = np.array([[0.01, 0, 0],
+                                 [0, 0.01, 0],
+                                 [0, 0, 0.5]]) # Measurement noise covariance matrix
                 
         #FLAGS FOR SUB CALLBACKS
         self.landmark_status = False
@@ -115,7 +115,7 @@ class KalmanNode(Node):
 
         # Direct kinematics
         self.v = self.wheel_radius * (self.omega_r + self.omega_l) / 2
-        self.w = self.wheel_radius * (self.omega_r - self.omega_l) / self.wheel_base
+        self.w =( self.wheel_radius * (self.omega_r - self.omega_l) / self.wheel_base) * 1.0
 
         self.new_odom = True
     
@@ -394,7 +394,7 @@ class KalmanNode(Node):
     def Kalmann_filter(self):
         #Obtain covariance
         # self.get_logger().info('Obtaining Q')
-        self.landmark_status = False
+        
         start_time = time.perf_counter()
         self.obtain_Q()
         # self.get_logger().info('Dead Reckoning')
@@ -411,7 +411,7 @@ class KalmanNode(Node):
             # self.get_logger().info(f'Kalman Gain:\n{self.Kalmann_gain}')
             self.calc_miu()
             self.calc_sigma()        
-            
+            self.landmark_status = False
         # If landmark is not visible, use prediction (Dead Reckoning only)
         else:
             self.uPose = self.uHat
