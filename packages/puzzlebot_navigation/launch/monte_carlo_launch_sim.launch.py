@@ -18,7 +18,7 @@ mcl_args = {
     'clusterEps': 0.5,
     'clusterMinSamples': 0.05,
     'scaleRdParticles': 0.0,
-    'minDistance': 0.01,
+    'minDistance': 0.001,
     'minAngle': 5.0,
     'repropagateCountNeeded': 1,
     'HZ' : 20.0,
@@ -166,15 +166,15 @@ def generate_launch_description():
             # parameters=[{"map_yaml_file" : LaunchConfiguration("map_file")}],
         ),
         
-        # Node(
-        #     package="puzzlebot_navigation",
-        #     executable="monte_carlo_localisation.py",
-        #     name="monte_carlo_localisation",
-        #     output="screen",
-        #     parameters=[
-        #         {key: LaunchConfiguration(key) for key in mcl_args.keys()}
-        #     ],
-        # ),
+        Node(
+            package="puzzlebot_navigation",
+            executable="monte_carlo_localisation.py",
+            name="monte_carlo_localisation",
+            output="screen",
+            parameters=[
+                {key: LaunchConfiguration(key) for key in mcl_args.keys()}
+            ],
+        ),
 
         Node(
             package="puzzlebot_navigation",
