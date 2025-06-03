@@ -118,7 +118,6 @@ def generate_launch_description():
             }.items()
         ),
 
-
         # Optional RViz launch
         Node(
             condition=IfCondition(LaunchConfiguration("rviz")),

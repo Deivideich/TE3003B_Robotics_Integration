@@ -246,6 +246,7 @@ class MCLNode(Node):
     def transform_laser_scan(self, scan_msg):
         self.scan = scan_msg
         if not self.sim:
+            self.get_logger().info("TRANSFORMING SCAN TO REAL ROBOT FRAME")
             self.scan.angle_min = scan_msg.angle_min + 3.14
             self.scan.angle_max = scan_msg.angle_max + 3.14
 
