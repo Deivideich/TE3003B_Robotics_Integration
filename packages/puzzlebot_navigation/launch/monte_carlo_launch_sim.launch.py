@@ -181,6 +181,7 @@ def generate_launch_description():
             name="local_map",
             output="screen",
             parameters=[
+                {'sim': LaunchConfiguration('sim')},
             ],
         ),
         

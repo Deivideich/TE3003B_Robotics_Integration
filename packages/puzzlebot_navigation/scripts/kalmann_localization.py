@@ -123,7 +123,7 @@ class KalmanNode(Node):
 
         # Direct kinematics
         self.v = self.wheel_radius * (self.omega_r + self.omega_l) / 2
-        self.w = self.wheel_radius * (self.omega_r - self.omega_l) / self.wheel_base
+        self.w =( self.wheel_radius * (self.omega_r - self.omega_l) / self.wheel_base) * 1.0
 
         self.new_odom = True
     

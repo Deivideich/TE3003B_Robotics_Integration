@@ -106,7 +106,9 @@ def generate_launch_description():
             executable="local_map.py",
             name="local_map",
             output="screen",
-            parameters=[
+            parameters=[{
+                'sim': LaunchConfiguration('sim'),
+            }
             ],
         ),
         
