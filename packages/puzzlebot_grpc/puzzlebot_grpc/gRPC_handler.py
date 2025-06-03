@@ -25,9 +25,10 @@ class PuzzlebotRPCImpl(pz_grpc.PuzzlebotRPCServicer):
 
     def setup(self):
         self.node.declare_parameter("numOfTrailers", 3)
-        self.num_of_trailers = self.get_parameter('numOfTrailers').get_parameter_value().integer_value
-        self.trailer_array_sub = self.node.create_subscription(TrailerArray, '/trailer_array', self.update_trailers_data, 10)
-        self.compressed_image_sub = self.node.create_subscription(CompressedImage, '/video_source/compressed', self.update_compressed_image, 10)
+        self.num_of_trailers = 3#self.get_parameter('numOfTrailers').get_parameter_value().integer_value
+        qos = rclpy.qos.QoSProfile(depth=10, reliability=rclpy.qos.ReliabilityPolicy.BEST_EFFORT)
+        self.trailer_array_sub = self.node.create_subscription(TrailerArray, '/trailer_array', self.update_trailers_data, qos)
+        self.compressed_image_sub = self.node.create_subscription(CompressedImage, '/video_source/compressed', self.update_compressed_image, qos)
 
     def update_compressed_image(self, msg):
         self.compressed_image = msg.data

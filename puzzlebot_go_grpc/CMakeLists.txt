@@ -13,8 +13,8 @@ find_package(ament_cmake REQUIRED)
 
 # Paths
 set(PROTO_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src/protos)
-set(GOOGLEAPIS_DIR /home/robotics/tools/googleapis)
-set(GRPC_GATEWAY_PLUGIN /home/robotics/go/bin/protoc-gen-grpc-gateway)
+set(GOOGLEAPIS_DIR /home/juancarlos/tools/googleapis) # For Juan Carlos computer
+set(GRPC_GATEWAY_PLUGIN /home/juancarlos/go/bin/protoc-gen-grpc-gateway) # For Juan Carlos computer
 
 # Proto file(s)
 set(PROTO_FILES ${PROTO_DIR}/rpc-puzzlebot-gw.proto)
@@ -65,7 +65,7 @@ add_custom_target(generate_go_proto ALL
 
 set(GO_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src)
 set(GO_MOD_FILE ${GO_SRC_DIR}/go.mod)
-set(GO_MODULE_NAME example.com/puzzlebot_grpc_service)
+set(GO_MODULE_NAME dreamteam.com/puzzlebot-grpc)
 
 # Step 1: go mod init
 add_custom_command(
