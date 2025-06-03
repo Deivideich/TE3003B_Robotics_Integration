@@ -20,6 +20,7 @@
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 #include <tf2/utils.h>  // ✅ This is the key one
+#include <unordered_map>
 
 using std::placeholders::_1;
 using namespace std::chrono_literals;
@@ -39,11 +40,14 @@ public:
     // Declare params
     controller_type_ = this->declare_parameter<std::string>("controller_type", "pure_pursuit");
     usingBugAlgorithm_ = this->declare_parameter<bool>("usingBugAlgorithm", true);
+    usingMCLPose_ = this->declare_parameter<bool>("usingMCLPose", true);
     delta_angle_ = this->declare_parameter<float>("delta_angle", float(M_PI / 32));
     deviation_threshold_ = this->declare_parameter<float>("deviation_threshold", 0.75);
     
     linear_speed_ = this->declare_parameter<float>("linear_speed", 0.1);
+    angular_speed_ = this->declare_parameter<float>("angular_speed", 0.25);
     lookahead_distance_ = this->declare_parameter<float>("lookahead_distance", 0.2);
+    orientation_tolerance_ = this->declare_parameter<float>("orientation_tolerance", 0.15);
     kP_ = this->declare_parameter<float>("kP", 0.2);
     kI_ = this->declare_parameter<float>("kI", 0.2);
     kD_ = this->declare_parameter<float>("kD", 0.2);
@@ -52,11 +56,14 @@ public:
   void get_parameters(){
     controller_type_ = this->get_parameter("controller_type").as_string();
     usingBugAlgorithm_ = this->get_parameter("usingBugAlgorithm").as_bool();
+    usingMCLPose_ = this->get_parameter("usingMCLPose").as_bool();
     delta_angle_ = this->get_parameter("delta_angle").as_double();
     deviation_threshold_ = this->get_parameter("deviation_threshold").as_double();
 
     linear_speed_ = this->get_parameter("linear_speed").as_double();
+    angular_speed_ = this->get_parameter("angular_speed").as_double();
     lookahead_distance_ = this->get_parameter("lookahead_distance").as_double();
+    orientation_tolerance_ = this->get_parameter("orientation_tolerance").as_double();
     kP_ = this->get_parameter("kP").as_double();
     kI_ = this->get_parameter("kI").as_double();
     kD_ = this->get_parameter("kD").as_double();
@@ -66,26 +73,11 @@ public:
     get_parameters();
 
     if (controller_type_ == "pure_pursuit") {
-      controller_ = std::make_unique<puzzlebot_controllers::controllers::PurePursuitController>(linear_speed_, lookahead_distance_);
-      if (usingBugAlgorithm_){
-      /**
-       * Previously we used a wall following algorithm with a bug2 controller, however we will know implement a "BUG2Planner" and the BUG2 controller will work
-       * as a pure pursuit controller, we will create a plan that follows the bug theory
-       */
-      bug_controller_ = std::make_unique<puzzlebot_controllers::controllers::PurePursuitController>(linear_speed_, lookahead_distance_);
-    }
+      controller_ = std::make_unique<puzzlebot_controllers::controllers::PurePursuitController>(linear_speed_, angular_speed_, lookahead_distance_, orientation_tolerance_);
     } else if (controller_type_ == "pid") {
-      controller_ = std::make_unique<puzzlebot_controllers::controllers::PIDController>(linear_speed_, kP_, kD_, kI_);
-      if (usingBugAlgorithm_){
-      /**
-       * Previously we used a wall following algorithm with a bug2 controller, however we will know implement a "BUG2Planner" and the BUG2 controller will work
-       * as a pure pursuit controller, we will create a plan that follows the bug theory
-       */
-      bug_controller_ = std::make_unique<puzzlebot_controllers::controllers::PIDController>(linear_speed_,  kP_, kD_, kI_);
-      }
+      controller_ = std::make_unique<puzzlebot_controllers::controllers::PIDController>(linear_speed_, angular_speed_, kP_, kD_, kI_);
     // } else if (controller_type_ == "mpc") {
-      // controller_ = std::make_unique<puzzlebot_controllers::controllers::MPCController>(linear_speed_);
-      //bug_controller_ = std::make_unique<puzzlebot_controllers::controllers::MPCController>(linear_speed_);
+      // controller_ = std::make_unique<puzzlebot_controllers::controllers::MPCController>(linear_speed_, angular_speed_);
     } else {
       RCLCPP_ERROR(this->get_logger(), "Unknown controller type: %s", controller_type_.c_str());
       rclcpp::shutdown();
@@ -97,7 +89,7 @@ public:
     planner_client_ = this->create_client<puzzlebot_interfaces::srv::PlanPath>("plan_path", rmw_qos_profile_services_default, client_cb_group_);
     bug_planner_client_ = this->create_client<puzzlebot_interfaces::srv::PlanPath>("bug_plan_path", rmw_qos_profile_services_default, client_cb_group_);
 
-    curr_pose_listener_ = this->create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>("/mcl_pose", 10, std::bind(&ControllerNode::poseCallback, this, _1)); 
+    curr_pose_listener_ = this->create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>(pose_topics[usingMCLPose_], 10, std::bind(&ControllerNode::poseCallback, this, _1)); 
     goal_listener_ = this->create_subscription<geometry_msgs::msg::PoseStamped>("/goal_pose", 10, std::bind(&ControllerNode::goalCallback, this, _1)); 
     // local_map_listener_ = this->create_subscription<nav_msgs::msg::OccupancyGrid>("/local_map", 10, std::bind(&ControllerNode::localMapCallback, this, _1));
     merged_map_listener_ = this->create_subscription<nav_msgs::msg::OccupancyGrid>("/merged_map", 10, std::bind(&ControllerNode::mergedMapCallback, this, _1));
@@ -445,11 +437,18 @@ private:
   // Node Params
   std::string controller_type_;
   bool usingBugAlgorithm_;
+  bool usingMCLPose_;
   double delta_angle_;
   double deviation_threshold_;
+  
+  std::unordered_map<bool,std::string> pose_topics = {{false, "/kalman_pose"}, {true, "/mcl_pose"}};
 
-  double linear_speed_;
-  double lookahead_distance_;
+  std::unique_ptr<puzzlebot_controllers::controllers::ControllerInterface> controller_;
+  std::unique_ptr<puzzlebot_controllers::controllers::Bug2Controller> bug_controller_;
+  
+  double linear_speed_, angular_speed_;
+  double lookahead_distance_, orientation_tolerance_;
+
   double kP_, kD_, kI_;
 
   std::unique_ptr<puzzlebot_controllers::controllers::ControllerInterface> controller_;

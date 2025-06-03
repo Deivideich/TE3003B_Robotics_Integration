@@ -1,11 +1,11 @@
 #include "puzzlebot_controller/controllers/pure_pursuit.hpp"
-
+#include <cmath>
 namespace puzzlebot_controllers 
 {
     namespace controllers 
     {
-        PurePursuitController::PurePursuitController(double linear_speed, double lookahead_distance) : 
-        ControllerInterface(linear_speed), lookahead_distance_(lookahead_distance) {}
+        PurePursuitController::PurePursuitController(double linear_speed, double angular_speed, double lookahead_distance, double orientation_tolerance) : 
+        ControllerInterface(linear_speed, angular_speed), lookahead_distance_(lookahead_distance), orientation_tolerance_(orientation_tolerance) {}
 
         bool PurePursuitController::computeCommand(
             const geometry_msgs::msg::PoseStamped& current_pose,
@@ -26,8 +26,31 @@ namespace puzzlebot_controllers
                 }
             }
 
-            // Stop if we are at the end
-            if (lookahead == nullptr) return true;
+            // If no lookahead point, we are at the end -> align to final pose
+            if (lookahead == nullptr) {
+                const auto& goal_pose = path.back().pose;
+
+                // Compute angle difference
+                tf2::Quaternion q_current, q_goal;
+                tf2::fromMsg(current_pose.pose.orientation, q_current);
+                tf2::fromMsg(goal_pose.orientation, q_goal);
+
+                double yaw_current = tf2::getYaw(q_current);
+                double yaw_goal = tf2::getYaw(q_goal);
+                double yaw_error = angles::shortest_angular_distance(yaw_current, yaw_goal);
+
+                // If orientation is aligned, stop
+                if (std::abs(yaw_error) < orientation_tolerance_) {
+                    cmd->linear.x = 0.0;
+                    cmd->angular.z = 0.0;
+                    return true;  // Goal fully reached
+                }
+
+                // Otherwise, rotate in place
+                cmd->linear.x = 0.0;
+                cmd->angular.z = std::clamp(yaw_error, -angular_speed_, angular_speed_);
+                return false;
+            }
 
             // Transform goal to robot frame
             tf2::Transform tf_robot;
@@ -42,8 +65,8 @@ namespace puzzlebot_controllers
             double curvature = 2 * y / (lookahead_distance_  * lookahead_distance_   );
             double angular_z = linear_speed_ * curvature;
 
-            cmd->linear.x = linear_speed_;
-            cmd->angular.z = angular_z;
+            cmd->linear.x = std::fabs(angular_z) > angular_speed_ ? linear_speed_ * 0.2 : linear_speed_;
+            cmd->angular.z = std::clamp(angular_z, -angular_speed_, angular_speed_);
             
             return false;
         }
