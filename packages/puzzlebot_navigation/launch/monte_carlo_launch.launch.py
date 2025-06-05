@@ -21,6 +21,8 @@ mcl_args = {
     'repropagateCountNeeded': 1,
     'HZ' : 20.0,
     'sim': False,
+    'broadcast_tf' : True,
+    'ekf_w_mcl' : True,
 }
 
 def generate_launch_description():
@@ -98,6 +100,19 @@ def generate_launch_description():
             output="screen",
             parameters=[
                 {key: LaunchConfiguration(key) for key in mcl_args.keys()}
+            ],
+        ),
+
+        Node(
+            package="puzzlebot_navigation",
+            executable="kalmann_localization.py",
+            name="kalmann_localization",
+            output="screen",
+            parameters=[
+                {
+                    'broadcast_tf' : LaunchConfiguration('broadcast_tf'),
+                    'ekf_w_mcl' : LaunchConfiguration('ekf_w_mcl'),
+                }
             ],
         ),
 

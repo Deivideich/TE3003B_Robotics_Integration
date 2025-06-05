@@ -29,7 +29,9 @@ class KalmanNode(Node):
         
         # create broadcast tf param
         self.declare_parameter('broadcast_tf', True)
+        self.declare_parameter('ekf_w_mcl', False)
         self.broadcast_tf = self.get_parameter('broadcast_tf').get_parameter_value().bool_value
+        self.ekf_w_mcl = self.get_parameter('ekf_w_mcl').get_parameter_value().bool_value
         self.initial_pose = False
 
         # SUBSCRIBERS
@@ -474,7 +476,7 @@ class KalmanNode(Node):
 
         # self.get_logger().info(f'Pose actual: x={self.uPose[0,0]:.2f}, y={self.uPose[1,0]:.2f}, θ={self.uPose[2,0]:.2f}')
         
-        if self.broadcast_tf and not self.initial_pose:
+        if ((self.broadcast_tf and not self.ekf_w_mcl) or (self.broadcast_tf and not self.initial_pose and self.ekf_w_mcl)):
             self.broadcast_transform()
         self.set_previous()
         elapsed_time = time.perf_counter() - start_time

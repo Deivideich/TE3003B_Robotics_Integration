@@ -32,6 +32,8 @@ ARGS = {
     'repropagateCountNeeded': 1,
     'HZ' : 20.0,
     'sim': False,
+    'broadcast_tf' : True,
+    'ekf_w_mcl' : False,
 }
 class MCLNode(Node):
     def __init__(self):
@@ -50,6 +52,8 @@ class MCLNode(Node):
         self.declare_parameter('repropagateCountNeeded', ARGS['repropagateCountNeeded'])
         self.declare_parameter('HZ', ARGS['HZ'])
         self.declare_parameter('sim', ARGS['sim'])
+        self.declare_parameter('broadcast_tf', ARGS['broadcast_tf'])
+        self.declare_parameter('ekf_w_mcl', ARGS['ekf_w_mcl'])
 
         self.initialize_params()
 
@@ -104,6 +108,8 @@ class MCLNode(Node):
         self.useClustering = self.get_parameter('useClustering').get_parameter_value().bool_value
         self.num_particles = self.get_parameter('numParticles').get_parameter_value().integer_value
         self.scan_step = self.get_parameter('scanStep').get_parameter_value().integer_value
+        self.ekf_w_mcl = self.get_parameter('ekf_w_mcl').get_parameter_value().bool_value
+        self.broadcast_tf = self.get_parameter('broadcast_tf').get_parameter_value().bool_value
         self.num_dimensions = 3
         self.min_cluster_distance = self.get_parameter('minClusterDistance').get_parameter_value().double_value
         self.cluster_eps = self.get_parameter('clusterEps').get_parameter_value().double_value
