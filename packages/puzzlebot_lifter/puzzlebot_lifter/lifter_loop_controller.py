@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import time
-import gpiod
-
+import Jetson.GPIO as GPIO
+from puzzlebot_lifter.lifter_state_class import LifterDirection
 class LifterStatus:
     MOVE_UP = 0
     MOVE_DOWN = 1
@@ -9,21 +9,29 @@ class LifterStatus:
 
 class LifterControl:
     def __init__(self, chip_name='gpiochip0'):
-        self.GPIO_DIR = 149
-        self.GPIO_EN = 12
-        self.GPIO_BUTTON_UP = 216
-        self.GPIO_BUTTON_DOWN = 77
+        self.GPIO = GPIO
+        self.GPIO_DIR = 29
+        self.GPIO_EN = 37
+        self.GPIO_SENSOR_UP = 7
+        self.GPIO_SENSOR_DOWN = 38
 
-        self.chip = gpiod.Chip(chip_name)
-        self.dir_line = self.chip.get_line(self.GPIO_DIR)
-        self.en_line = self.chip.get_line(self.GPIO_EN)
-        self.up_sensor = self.chip.get_line(self.GPIO_BUTTON_UP)
-        self.down_sensor = self.chip.get_line(self.GPIO_BUTTON_DOWN)
+        
+        self.GPIO.setmode(GPIO.BOARD)
+        self.GPIO.setup(self.GPIO_DIR, GPIO.OUT, initial=GPIO.LOW)
+        self.GPIO.setup(self.GPIO_EN, GPIO.OUT, initial=GPIO.LOW)
+        self.GPIO.setup(self.GPIO_SENSOR_UP, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
+        self.GPIO.setup(self.GPIO_SENSOR_DOWN, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
+        
+        # self.chip = gpiod.Chip(chip_name)
+        # self.dir_line = self.chip.get_line(self.GPIO_DIR)
+        # self.en_line = self.chip.get_line(self.GPIO_EN)
+        # self.up_sensor = self.chip.get_line(self.GPIO_BUTTON_UP)
+        # self.down_sensor = self.chip.get_line(self.GPIO_BUTTON_DOWN)
 
-        self.dir_line.request(consumer='lifter', type=gpiod.LINE_REQ_DIR_OUT, default_val=0)
-        self.en_line.request(consumer='lifter', type=gpiod.LINE_REQ_DIR_OUT, default_val=0)
-        self.up_sensor.request(consumer='lifter', type=gpiod.LINE_REQ_DIR_IN)
-        self.down_sensor.request(consumer='lifter', type=gpiod.LINE_REQ_DIR_IN)
+        # self.dir_line.request(consumer='lifter', type=gpiod.LINE_REQ_DIR_OUT, default_val=0)
+        # self.en_line.request(consumer='lifter', type=gpiod.LINE_REQ_DIR_OUT, default_val=0)
+        # self.up_sensor.request(consumer='lifter', type=gpiod.LINE_REQ_DIR_IN)
+        # self.down_sensor.request(consumer='lifter', type=gpiod.LINE_REQ_DIR_IN)
 
         self.state = LifterStatus.STOP
         self.previous_state = LifterStatus.STOP
@@ -31,9 +39,11 @@ class LifterControl:
         self.completed = False
 
     def read_sensors(self):
-        #Order is 0 for up sensor, 1 for down sensor
         # Return True if the sensor is triggered (active low)
-        return not self.up_sensor.get_value(), not self.down_sensor.get_value()
+        up = self.GPIO.input(self.GPIO_SENSOR_UP) == GPIO.LOW
+        down = self.GPIO.input(self.GPIO_SENSOR_DOWN) == GPIO.LOW
+        print(f"Sensor UP: {up}, Sensor DOWN: {down}")
+        return  up, down
 
     def set_state(self, state):
         if state != self.state:
@@ -56,7 +66,7 @@ class LifterControl:
         if self.overrun_start_time is None:
             self.overrun_start_time = time.time()
         if (time.time() - self.overrun_start_time) < 1.0:
-            self.dir_line.set_value(direction_val)
+            self.GPIO.output(self.GPIO_DIR, direction_val)
             self.enable()
         else:
             self.stop
@@ -64,19 +74,19 @@ class LifterControl:
 
     def _apply_motion(self):
         if self.state == LifterStatus.MOVE_UP:
-            self.dir_line.set_value(LifterStatus.MOVE_UP)
+            self.GPIO.output(self.GPIO_DIR, LifterStatus.MOVE_UP)
             self.enable()
         elif self.state == LifterStatus.MOVE_DOWN:
-            self.dir_line.set_value(LifterStatus.MOVE_DOWN)
+            self.GPIO.output(self.GPIO_DIR, LifterStatus.MOVE_DOWN)
             self.enable()
         else:
             self.stop()
 
     def enable(self):
-        self.en_line.set_value(1)
+        self.GPIO.output(self.GPIO_EN, GPIO.HIGH)
 
     def stop(self):
-        self.en_line.set_value(0)
+        self.GPIO.output(self.GPIO_EN, GPIO.LOW)
 
     def cleanup(self):
         self.stop()
@@ -87,8 +97,13 @@ class LifterControl:
         self.chip.close()
     
     def move(self, direction):
-        self.dir_line.set_value(direction)
-        self.en_line.set_value(1)
+        if direction == LifterDirection.MOVE_UP:
+            direction = self.GPIO.HIGH
+        elif direction == LifterDirection.MOVE_DOWN:
+            direction = self.GPIO.LOW     
+        self.GPIO.output(self.GPIO_DIR, direction)
+        self.enable()
+
         
     def timed_move(self, direction, duration):
         try:
@@ -102,6 +117,7 @@ class LifterControl:
         self.move(direction)
         time.sleep(duration)
         self.stop()
+
 
     
 

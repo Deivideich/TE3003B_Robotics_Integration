@@ -2,7 +2,7 @@
 import rclpy
 from rclpy.node import Node
 from puzzlebot_interfaces.srv import LifterMovement
-from puzzlebot_lifter.scripts.lifter_loop_controller import LifterControl
+from puzzlebot_lifter.lifter_loop_controller import LifterControl
 from puzzlebot_lifter.lifter_state_class import LifterState, LifterDirection
 import time 
 
@@ -25,33 +25,35 @@ class LifterStateManager(Node):
             self.received_state = LifterState(request.state)
         except ValueError:
             self.get_logger().error(f"Invalid lifter state received: {request.state}")
-            response.success = False
+            response.reached = False
             return response
 
         self.get_logger().info(f"Received lifter request: {self.received_state.name}")
         
         if self.received_state == LifterState.STOP:
             self.lifter.stop()
-            response.success = self.completed
+            response.reached = self.completed
             
         elif self.received_state == LifterState.MOVE_FORK_TO_BOTTOM:
             self.move_and_wait_for_sensor_trigger(LifterDirection.MOVE_DOWN)
-            response.success = self.completed
+            self.timed_move(LifterDirection.MOVE_DOWN, 1.0)
+            response.reached = self.completed
             
         elif self.received_state == LifterState.MOVE_FORK_TO_TOP:
             self.move_and_wait_for_sensor_trigger(LifterDirection.MOVE_UP)
-            response.success = self.completed
+            self.timed_move(LifterDirection.MOVE_UP, 1.0)
+            response.reached = self.completed
             
         elif self.received_state == LifterState.MOVE_FORK_TO_MIDDLE:
             self.lifter.timed_move(LifterDirection.MOVE_UP, 1.0)
             self.move_and_wait_for_sensor_trigger(LifterDirection.MOVE_DOWN)
             self.lifter.timed_move(LifterDirection.MOVE_UP, 10.0)
-            response.success = self.completed
+            response.reached = self.completed
             
         elif self.received_state == LifterState.LEAVE_PALLET:
-            self.lifter.timed_move(LifterDirection.MOVE_DOWN, 2.0)
+            self.lifter.timed_move(LifterDirection.MOVE_DOWN, 1.0)
             self.lifter.timed_move(LifterDirection.MOVE_UP, 0.5)
-            response.success = self.completed
+            response.reached = self.completed
 
         return response
     

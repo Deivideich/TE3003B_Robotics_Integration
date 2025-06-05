@@ -8,9 +8,8 @@ class LifterState(Enum):
     STOP = 4
     
 class LifterDirection(Enum):
-    STOP = 0
+    MOVE_DOWN = 0
     MOVE_UP = 1
-    MOVE_DOWN = 2
     
 class SensorIDs(Enum):
     UP = 0
