@@ -1,4 +1,5 @@
 #include <rclcpp/rclcpp.hpp>
+#include "rclcpp_action/rclcpp_action.hpp"
 #include <geometry_msgs/msg/twist.hpp>
 #include "geometry_msgs/msg/pose_with_covariance_stamped.hpp"
 #include <nav_msgs/msg/path.hpp>
@@ -6,6 +7,7 @@
 #include <nav_msgs/msg/occupancy_grid.hpp>
 #include <std_msgs/msg/string.hpp>
 #include "puzzlebot_interfaces/srv/plan_path.hpp"
+#include "puzzlebot_interfaces/action/controller_action.hpp"
 
 #include "puzzlebot_controller/controllers/controller_interface.hpp"
 #include "puzzlebot_controller/controllers/pure_pursuit.hpp"
@@ -32,6 +34,9 @@
 
 using std::placeholders::_1;
 using namespace std::chrono_literals;
+using ControllerAction = puzzlebot_interfaces::action::ControllerAction;
+using GoalHandleController = rclcpp_action::ServerGoalHandle<ControllerAction>;
+
 
 enum ControllerStates{
   STOPPED,
@@ -80,10 +85,26 @@ public:
   void setup(){
     get_parameters();
 
+
+    tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
+    tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
+
+    planner_client_cb_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+    // timer_cb_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+    controller_cb_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+    
+    action_server_ = rclcpp_action::create_server<ControllerAction>(
+      this,
+      "controller_server",
+      std::bind(&ControllerNode::handleGoal, this, std::placeholders::_1, std::placeholders::_2),
+      std::bind(&ControllerNode::handleCancel, this, std::placeholders::_1),
+      std::bind(&ControllerNode::handleAccepted, this, std::placeholders::_1)
+    );
+
     if (controller_type_ == "pure_pursuit") {
-      controller_ = std::make_unique<puzzlebot_controllers::controllers::PurePursuitController>(linear_speed_, angular_speed_, lookahead_distance_, orientation_tolerance_);
+      controller_ = std::make_unique<puzzlebot_controllers::controllers::PurePursuitController>(linear_speed_, angular_speed_, lookahead_distance_, orientation_tolerance_, tf_buffer_.get());
     } else if (controller_type_ == "pid") {
-      controller_ = std::make_unique<puzzlebot_controllers::controllers::PIDController>(linear_speed_, angular_speed_, kP_, kD_, kI_);
+      controller_ = std::make_unique<puzzlebot_controllers::controllers::PIDController>(linear_speed_, angular_speed_, kP_, kD_, kI_, tf_buffer_.get());
     // } else if (controller_type_ == "mpc") {
       // controller_ = std::make_unique<puzzlebot_controllers::controllers::MPCController>(linear_speed_, angular_speed_);
     } else {
@@ -95,48 +116,64 @@ public:
       bug_controller_ = std::make_unique<puzzlebot_controllers::bug_controllers::Bug0Controller>(linear_speed_, 0.1, 0.5, delta_angle_, 2);
     }
 
-    client_cb_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
-    timer_cb_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
-
-    planner_client_ = this->create_client<puzzlebot_interfaces::srv::PlanPath>("plan_path", rmw_qos_profile_services_default, client_cb_group_);
-    // bug_planner_client_ = this->create_client<puzzlebot_interfaces::srv::PlanPath>("bug_plan_path", rmw_qos_profile_services_default, client_cb_group_);
+    planner_client_ = this->create_client<puzzlebot_interfaces::srv::PlanPath>("plan_path", rmw_qos_profile_services_default, planner_client_cb_group_);
+    // bug_planner_client_ = this->create_client<puzzlebot_interfaces::srv::PlanPath>("bug_plan_path", rmw_qos_profile_services_default, planner_client_cb_group_);
 
     curr_pose_listener_ = this->create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>(pose_topics[usingMCLPose_], 10, std::bind(&ControllerNode::poseCallback, this, _1)); 
-    goal_listener_ = this->create_subscription<geometry_msgs::msg::PoseStamped>("/goal_pose", 10, std::bind(&ControllerNode::goalCallback, this, _1)); 
+    // goal_listener_ = this->create_subscription<geometry_msgs::msg::PoseStamped>("/goal_pose", 10, std::bind(&ControllerNode::goalCallback, this, _1)); 
     local_map_listener_ = this->create_subscription<nav_msgs::msg::OccupancyGrid>("/local_map", 10, std::bind(&ControllerNode::localMapCallback, this, _1));
     merged_map_listener_ = this->create_subscription<nav_msgs::msg::OccupancyGrid>("/merged_map", 10, std::bind(&ControllerNode::mergedMapCallback, this, _1));
     cmd_pub_ = this->create_publisher<geometry_msgs::msg::Twist>("/cmd_vel", 10);
     control_state_pub_ = this->create_publisher<std_msgs::msg::String>("/controller_state", 10);
     control_point_pub_ = this->create_publisher<geometry_msgs::msg::PoseStamped>("/control_point", 10);
-    timer_ = this->create_wall_timer(100ms, std::bind(&ControllerNode::timerCallback, this), timer_cb_group_);
+    // timer_ = this->create_wall_timer(100ms, std::bind(&ControllerNode::controllerFSM, this), timer_cb_group_);
+    // timer_cb_group_
 
     RCLCPP_INFO(this->get_logger(), "Waiting for planning service");
     while (!planner_client_->wait_for_service(2s));
     RCLCPP_INFO(this->get_logger(), "Planner server ready");
-
-    tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
-    tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
   }
 
 private:
+  rclcpp_action::GoalResponse handleGoal(
+    const rclcpp_action::GoalUUID & uuid,
+    std::shared_ptr<const ControllerAction::Goal> goal)
+  {
+    RCLCPP_INFO(this->get_logger(), "Received goal request");
+    return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
+  }
+
+  rclcpp_action::CancelResponse handleCancel(
+    const std::shared_ptr<GoalHandleController> goal_handle)
+  {
+    RCLCPP_INFO(this->get_logger(), "Received cancel request");
+    return rclcpp_action::CancelResponse::ACCEPT;
+  }
+
+  void handleAccepted(const std::shared_ptr<GoalHandleController> goal_handle)
+  {
+    current_goal_handle_ = goal_handle;
+    std::thread{std::bind(&ControllerNode::executeGoal, this, goal_handle)}.detach();
+  }
+
   void poseCallback(const geometry_msgs::msg::PoseWithCovarianceStamped::SharedPtr msg){
     current_pose_ = std::make_shared<geometry_msgs::msg::PoseStamped>();
     current_pose_->header = msg->header;
     current_pose_->pose = msg->pose.pose;
   }
 
-  void goalCallback(const geometry_msgs::msg::PoseStamped::SharedPtr msg){
-    if (goal_pose_ != nullptr) {
-      RCLCPP_INFO(this->get_logger(), "Received **NEW** goal pose: [x: %f, y: %f, z: %f, orientation: (%f, %f, %f, %f)]",
-            msg->pose.position.x, msg->pose.position.y, msg->pose.position.z,
-            msg->pose.orientation.x, msg->pose.orientation.y, msg->pose.orientation.z, msg->pose.orientation.w);
-    } else {
-      RCLCPP_INFO(this->get_logger(), "Received goal pose: [x: %f, y: %f, z: %f, orientation: (%f, %f, %f, %f)]",
-            msg->pose.position.x, msg->pose.position.y, msg->pose.position.z,
-            msg->pose.orientation.x, msg->pose.orientation.y, msg->pose.orientation.z, msg->pose.orientation.w);
-    }
-    goal_pose_ = msg;
-  }
+  // void goalCallback(const geometry_msgs::msg::PoseStamped::SharedPtr msg){
+  //   if (goal_pose_ != nullptr) {
+  //     RCLCPP_INFO(this->get_logger(), "Received **NEW** goal pose: [x: %f, y: %f, z: %f, orientation: (%f, %f, %f, %f)]",
+  //           msg->pose.position.x, msg->pose.position.y, msg->pose.position.z,
+  //           msg->pose.orientation.x, msg->pose.orientation.y, msg->pose.orientation.z, msg->pose.orientation.w);
+  //   } else {
+  //     RCLCPP_INFO(this->get_logger(), "Received goal pose: [x: %f, y: %f, z: %f, orientation: (%f, %f, %f, %f)]",
+  //           msg->pose.position.x, msg->pose.position.y, msg->pose.position.z,
+  //           msg->pose.orientation.x, msg->pose.orientation.y, msg->pose.orientation.z, msg->pose.orientation.w);
+  //   }
+  //   goal_pose_ = msg;
+  // }
 
   void mergedMapCallback(const nav_msgs::msg::OccupancyGrid::SharedPtr msg){
     merged_map_ = msg;
@@ -259,9 +296,42 @@ private:
     }
 
     return message;
-  } 
+  }
 
-  void timerCallback(){
+  void executeGoal(const std::shared_ptr<GoalHandleController> goal_handle)
+  {
+    auto goal = goal_handle->get_goal();
+    goal_pose_ = std::make_shared<geometry_msgs::msg::PoseStamped>(goal->goal);
+
+    rclcpp::Rate loop_rate(10);
+    controller_state_ = GLOBAL_PLANNING;
+
+    auto feedback = std::make_shared<ControllerAction::Feedback>();
+    while (rclcpp::ok()) {
+    if (goal_handle->is_canceling()) {
+      RCLCPP_WARN(this->get_logger(), "Goal canceled");
+      goal_handle->canceled(std::make_shared<ControllerAction::Result>());
+      controller_state_ = STOPPED;
+      return;
+    }
+
+    controllerFSM();
+    feedback->controller_state = stateToString(controller_state_).data;
+    goal_handle->publish_feedback(feedback);
+
+    // If goal is done (e.g., reached):
+    if (controller_state_ == STOPPED) {
+      auto result = std::make_shared<ControllerAction::Result>();
+      result->success = true;
+      goal_handle->succeed(result);
+      return;
+    }
+
+    loop_rate.sleep();
+    }
+  }
+
+  void controllerFSM(){
     geometry_msgs::msg::Twist::SharedPtr cmd = std::make_shared<geometry_msgs::msg::Twist>();
 
     switch (controller_state_)
@@ -356,8 +426,11 @@ private:
     control_state_pub_->publish(stateToString(controller_state_));
   }
 
+  rclcpp_action::Server<ControllerAction>::SharedPtr action_server_;
+  std::shared_ptr<GoalHandleController> current_goal_handle_;
+
   rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr curr_pose_listener_;
-  rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr goal_listener_;
+  // rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr goal_listener_;
   rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr local_map_listener_;
   rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr merged_map_listener_;
   rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr cmd_pub_;
@@ -366,8 +439,10 @@ private:
   rclcpp::Client<puzzlebot_interfaces::srv::PlanPath>::SharedPtr planner_client_;
   // rclcpp::Client<puzzlebot_interfaces::srv::PlanPath>::SharedPtr bug_planner_client_;
   rclcpp::TimerBase::SharedPtr timer_;
-  rclcpp::CallbackGroup::SharedPtr client_cb_group_;
-  rclcpp::CallbackGroup::SharedPtr timer_cb_group_;
+  rclcpp::CallbackGroup::SharedPtr planner_client_cb_group_;
+  rclcpp::CallbackGroup::SharedPtr controller_cb_group_;
+  // rclcpp::CallbackGroup::SharedPtr timer_cb_group_;
+  
   
   geometry_msgs::msg::PoseStamped::SharedPtr current_pose_ = nullptr;
   geometry_msgs::msg::PoseStamped::SharedPtr goal_pose_ = nullptr;
