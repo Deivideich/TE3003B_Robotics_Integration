@@ -140,6 +140,7 @@ private:
     std::shared_ptr<const ControllerAction::Goal> goal)
   {
     RCLCPP_INFO(this->get_logger(), "Received goal request");
+    ignore_obstacles_ = goal->ignore_obstacles;
     return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
   }
 
@@ -385,7 +386,7 @@ private:
         if (distance_to_target > deviation_threshold_) {
           RCLCPP_WARN(this->get_logger(), "Significant deviation detected. Replanning required.");
           controller_state_ = GLOBAL_PLANNING;
-        }else if (isPathBlocked(transfromToBaselink(current_pose_), transfromToBaselink(std::make_shared<geometry_msgs::msg::PoseStamped>(target_pose), true), delta_angle_)){
+        }else if (!ignore_obstacles_ && isPathBlocked(transfromToBaselink(current_pose_), transfromToBaselink(std::make_shared<geometry_msgs::msg::PoseStamped>(target_pose), true), delta_angle_)){
           RCLCPP_WARN(this->get_logger(), "Path is blocked.");
           controller_state_ = OBSTACLE_FOUND;
         } else if (controller_->computeCommand(current_pose, current_path_, cmd)) {
@@ -477,8 +478,7 @@ private:
   // std::vector<geometry_msgs::msg::PoseStamped> bug_current_path_;
   
   ControllerStates controller_state_ = STOPPED;
-  
-
+  bool ignore_obstacles_ = false;  // If true, the controller will ignore obstacles
 };
 
 int main(int argc, char **argv) {
