@@ -8,6 +8,7 @@ from puzzlebot_interfaces.srv import GetQRsObject
 from cv_bridge import CvBridge
 import cv2
 import numpy as np
+from copy import deepcopy
 from puzzlebot_vision.qr_detector.QRDetector import QRDetector
 from geometry_msgs.msg import TransformStamped
 from tf2_ros import TransformBroadcaster
@@ -80,7 +81,7 @@ class QRDetectorNode(Node):
             np_arr = np.frombuffer(msg.data, np.uint8)
             self.frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
             self.frame_stamp = self.get_clock().now()
-            # self.process_frame(frame)
+            self.process_frame(deepcopy(self.frame))
         except Exception as e:
             self.get_logger().error(f'Failed to process compressed image: {e}')
 
@@ -89,7 +90,7 @@ class QRDetectorNode(Node):
             # Convert ROS Image to OpenCV format
             self.frame = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
             self.frame_stamp = self.get_clock().now()
-            # self.process_frame(frame)
+            self.process_frame(deepcopy(self.frame))
         except Exception as e:
             self.get_logger().error(f'Failed to process image: {e}')
 
@@ -128,7 +129,7 @@ class QRDetectorNode(Node):
             transform.transform.rotation.w = 1.0
             self.tf_broadcaster.sendTransform(transform)
         # Return detected QR codes
-        self.get_logger().info(f'Processed frame with {len(detected_qrs)} QR codes detected.')
+        # self.get_logger().info(f'Processed frame with {len(detected_qrs)} QR codes detected.')
 
         return detected_qrs
 
