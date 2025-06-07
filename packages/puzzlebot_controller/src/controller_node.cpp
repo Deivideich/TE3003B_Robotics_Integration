@@ -312,7 +312,8 @@ private:
       RCLCPP_WARN(this->get_logger(), "Goal canceled");
       goal_handle->canceled(std::make_shared<ControllerAction::Result>());
       controller_state_ = STOPPED;
-      return;
+      goal_pose_ = nullptr;
+      break;
     }
 
     controllerFSM();
@@ -329,6 +330,8 @@ private:
 
     loop_rate.sleep();
     }
+
+    controllerFSM();
   }
 
   void controllerFSM(){
