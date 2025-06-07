@@ -31,6 +31,7 @@ ament_target_dependencies(puzzlebot_controller_include PUBLIC
     nav_msgs
     geometry_msgs
     tf2
+    tf2_ros
     tf2_geometry_msgs
     angles
     # Add dependencies like rclcpp if model needs ROS types directly
@@ -56,6 +57,21 @@ install(
     TARGETS controller_node
     DESTINATION lib/${PROJECT_NAME}
 )
+
+add_executable(controller_client src/controller_client.cpp)
+
+ament_target_dependencies(controller_client
+  rclcpp
+  rclcpp_action
+  geometry_msgs
+  puzzlebot_interfaces
+)
+
+install(TARGETS
+  controller_client
+  DESTINATION lib/${PROJECT_NAME}
+)
+
 
 # Install headers
 install(
