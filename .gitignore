@@ -7,7 +7,6 @@ install/
 *.exe
 *.zip
 logged_data/
-
 *.pyc
 *.jpg
 *.pt

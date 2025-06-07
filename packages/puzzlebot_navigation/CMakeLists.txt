@@ -49,7 +49,7 @@ install(DIRECTORY utils/cpp/
 )
 
 # Install directories
-install(DIRECTORY scripts rviz maps launch
+install(DIRECTORY scripts rviz maps launch resources
   DESTINATION share/${PROJECT_NAME})
 
 

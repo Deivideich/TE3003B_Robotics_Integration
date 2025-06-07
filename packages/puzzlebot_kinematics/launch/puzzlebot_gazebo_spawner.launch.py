@@ -18,7 +18,8 @@ def generate_launch_description():
     pkg_urdf_share = FindPackageShare(pkg_urdf_name).find(pkg_urdf_name)
     default_model_path = os.path.join(pkg_urdf_share, "urdf", "robot.xacro")
     default_rviz_config_path = os.path.join(pkg__kinematics_share, "rviz", "visualizer.rviz")
-
+    aruco_marker_path = os.path.join(pkg_urdf_share, "urdf", "aruco_marker.xacro")
+    
     # Add the path for the Gazebo model (adjust based on where the saved model files are)
     gazebo_model_path = os.path.join(pkg_urdf_share, "models", "mcl_world")
     small_gazebo_model_path = os.path.join(pkg_urdf_share, "models", "PUZZLEBOT_ARENA_WALLS")
@@ -128,8 +129,7 @@ def generate_launch_description():
         ),
         
         
-        
-        TimerAction(
+TimerAction(
             period=5.0,
             actions=[
                 Node(
@@ -212,7 +212,7 @@ def generate_launch_description():
                 ),
             ]
         ),
-
+        
         # Optional RViz launch
         Node(
             condition=IfCondition(LaunchConfiguration("rviz")),
@@ -221,5 +221,6 @@ def generate_launch_description():
             name="rviz2",
             output="screen",
             arguments=["-d", default_rviz_config_path]
-        )
+        ),
+        
     ])

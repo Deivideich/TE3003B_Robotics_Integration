@@ -6,6 +6,7 @@ find_package(ament_cmake REQUIRED)
 find_package(ament_cmake_python REQUIRED)
 find_package(rclpy REQUIRED)
 find_package(std_msgs REQUIRED)
+find_package(puzzlebot_navigation REQUIRED)
 
 
 ######################### Python  #########################
@@ -26,6 +27,11 @@ install(PROGRAMS
 # Install directories
 install(DIRECTORY launch
   DESTINATION share/${PROJECT_NAME})
+
+install(DIRECTORY
+  ${PROJECT_NAME}/aruco_detector/aruco_map_poses/
+  DESTINATION lib/${PROJECT_NAME}/aruco_detector/aruco_map_poses/
+)
 
 ######################### Testing  #########################
 ##For testing

@@ -18,7 +18,7 @@ mcl_args = {
     'clusterEps': 0.5,
     'clusterMinSamples': 0.05,
     'scaleRdParticles': 0.0,
-    'minDistance': 0.01,
+    'minDistance': 0.001,
     'minAngle': 5.0,
     'repropagateCountNeeded': 1,
     'HZ' : 20.0,
@@ -83,27 +83,27 @@ def generate_launch_description():
             description="Whether to use clustering in MCL algorithm"
         ),
     
-        # # State publisher
-        # Node(
-        #     package="robot_state_publisher",
-        #     executable="robot_state_publisher",
-        #     name="robot_state_publisher",
-        #     parameters=[{
-        #         "robot_description": ParameterValue(
-        #             Command([
-        #                 FindExecutable(name="xacro"), " ",
-        #                 LaunchConfiguration("model"), " ",
-        #                 "prefix:=", LaunchConfiguration("prefix"), " ",
-        #                 "use_gazebo_controllers:=", LaunchConfiguration("use_gazebo_controllers"),
-        #                 " ",
-        #                 "use_gazebo_odom:=", LaunchConfiguration("use_gazebo_odom"),
-        #                 " ",
-        #             ]),
-        #             value_type=str
-        #         )
-        #     }],
-        #     output="screen"
-        # ),
+        # State publisher
+        Node(
+            package="robot_state_publisher",
+            executable="robot_state_publisher",
+            name="robot_state_publisher",
+            parameters=[{
+                "robot_description": ParameterValue(
+                    Command([
+                        FindExecutable(name="xacro"), " ",
+                        LaunchConfiguration("model"), " ",
+                        "prefix:=", LaunchConfiguration("prefix"), " ",
+                        "use_gazebo_controllers:=", LaunchConfiguration("use_gazebo_controllers"),
+                        " ",
+                        "use_gazebo_odom:=", LaunchConfiguration("use_gazebo_odom"),
+                        " ",
+                    ]),
+                    value_type=str
+                )
+            }],
+            output="screen"
+        ),
 
         # Include external launch file
         # Include the Gazebo spawner launch file unconditionally with arguments
@@ -117,7 +117,6 @@ def generate_launch_description():
                 "spawn_entity_name": LaunchConfiguration("spawn_entity_name"),
             }.items()
         ),
-
 
         # Optional RViz launch
         Node(
@@ -182,6 +181,7 @@ def generate_launch_description():
             name="local_map",
             output="screen",
             parameters=[
+                {'sim': LaunchConfiguration('sim')},
             ],
         ),
         
