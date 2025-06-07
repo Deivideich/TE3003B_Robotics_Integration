@@ -15,8 +15,6 @@ from ament_index_python.packages import get_package_share_directory
 NUMBER_OF_OBJECTS = 3  # Number of objects to be placed in trucks
 # Mock modules for testing purposes
 mock_modules = [
-    'navigation',
-    'vision',
 ]
 
 # states for state machine
@@ -37,6 +35,8 @@ class TruckType(Enum):
 class PuzzlebotManager(Node):
     def __init__(self):
         super().__init__('puzzlebot_manager')
+        self._default_callback_group = rclpy.callback_groups.ReentrantCallbackGroup()
+        
         
         self.get_logger().info("Initializing PuzzlebotManager...")
         self.get_logger().info(f"Mock modules: {', '.join(mock_modules)}")
@@ -51,6 +51,10 @@ class PuzzlebotManager(Node):
         truck_locations_file = f"{package_path}/config/truck_locations.yaml"
         truck_locations_filepath = self.declare_parameter('truck_locations_file',
                                                         truck_locations_file).value
+        exploration_goals_file = f"{package_path}/config/exploration_goals.yaml"
+        exploration_goals_filepath = self.declare_parameter('exploration_goals_file',
+                                                        exploration_goals_file).value
+        self.navigation_manager.load_exploration_goals(exploration_goals_filepath)
         self.navigation_manager.load_truck_locations(truck_locations_filepath)
         
         self.current_state = PuzzlebotState.INITIALIZING
@@ -58,7 +62,8 @@ class PuzzlebotManager(Node):
         self.objects_placed = 0  # Counter for placed objects
         
         # 20hz
-        self.state_machine_timer = self.create_timer(0.05, self.state_machine_callback)
+        self.state_machine_timer = self.create_timer(0.05, self.state_machine_callback, 
+                                                     callback_group=rclpy.callback_groups.MutuallyExclusiveCallbackGroup())
         
         self.get_logger().info("PuzzlebotManager node started successfully.")
         
@@ -69,6 +74,7 @@ class PuzzlebotManager(Node):
         
         
     def state_machine_callback(self):
+        print("state machine callback")
         if self.current_state == PuzzlebotState.INITIALIZING:
             self.get_logger().info("PuzzlebotManager is initializing...")
             self.current_state = PuzzlebotState.IDENTIFY_TRUCKS
@@ -82,16 +88,16 @@ class PuzzlebotManager(Node):
             self.get_logger().info("Trucks identified.")
             
             self.current_state = PuzzlebotState.EXPLORING
+        
         elif self.current_state == PuzzlebotState.EXPLORING:
-            self.get_logger().info("Exploring the environment...")
-            # Here you would implement the logic to explore the environment
-            # For now, we will just simulate it
-            time.sleep(2)
+            self.get_logger().info("Exploring...")
             
-            self.get_logger().info("Exploration complete.")
+            self.navigation_manager.explore()
             
-            self.current_state = PuzzlebotState.PICK
-            
+            if len(self.vision_manager.detect_qrs()) != 0:
+                self.current_state = PuzzlebotState.PICK
+            print("exit exploring state")    
+                    
         elif self.current_state == PuzzlebotState.PICK:
             self.get_logger().info("Picking an object...")
             # Here you would implement the logic to pick an object
