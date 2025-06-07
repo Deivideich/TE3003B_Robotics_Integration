@@ -17,7 +17,7 @@ namespace puzzlebot_controllers
                 double kD_;
                 double kI_;
             public:
-                PIDController(double linear_speed, double angular_speed, double kP, double kD, double kI);
+                PIDController(double linear_speed, double angular_speed, double kP, double kD, double kI, tf2_ros::Buffer* tf_buffer);
                 
                 bool computeCommand(
                     const geometry_msgs::msg::PoseStamped& current_pose,
