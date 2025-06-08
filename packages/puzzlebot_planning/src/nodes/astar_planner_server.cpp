@@ -109,6 +109,7 @@ class AStarPlannerServer : public rclcpp::Node
             this->get_parameter("using_real_sampling", using_real_sampling_);
             this->get_parameter("robot_width", robot_width_);
             this->get_parameter("robot_height", robot_height_);
+
         }
 
         void planPathCallback(const std::shared_ptr<puzzlebot_interfaces::srv::PlanPath::Request> request,

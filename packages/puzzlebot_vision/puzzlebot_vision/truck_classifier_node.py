@@ -45,7 +45,7 @@ class TruckClassifierNode(Node):
             return
 
         # State for continuous inference
-        self.inference_active = False
+        self.inference_active = True
 
         # Always create the service
         self.classify_service = self.create_service(
