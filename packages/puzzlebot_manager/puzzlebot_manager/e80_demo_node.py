@@ -83,8 +83,8 @@ class PuzzlebotManager(Node):
             self.get_logger().info("Identifying trucks...")
             
             for i, truck_location in enumerate(self.navigation_manager.truck_locations):
-                self.navigation_manager.go_to_truck_location(truck_index=i)
-                print("waiting for truck inference")
+                self.navigation_manager.go_to_truck_location(truck_index=i, wait=True)
+                self.get_logger().info(f"Arrived at truck location {i}.")
                 time.sleep(5)
                 truck_label = self.vision_manager.truck_classify(wait=True)
                 self.navigation_manager.truck_named_locations[truck_label] = truck_location
@@ -93,8 +93,6 @@ class PuzzlebotManager(Node):
             self.get_logger().info("Trucks identified.")
             self.get_logger().info("Starting exploration...")
             self.current_state = PuzzlebotState.EXPLORING
-            while True:
-                time.sleep(0.1)
         
         elif self.current_state == PuzzlebotState.EXPLORING:
             

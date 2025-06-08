@@ -96,7 +96,7 @@ class NavigationManager():
             return True
         
         goal = None
-        if truck_index > 0 and truck_index < len(self.truck_locations):
+        if truck_index >= 0 and truck_index < len(self.truck_locations):
             goal = self.truck_locations[truck_index]
             self.node.get_logger().info(f"Sending navigation goal to truck {truck_index}...")
         
