@@ -36,12 +36,10 @@ class LifterStateManager(Node):
             
         elif self.received_state == LifterState.MOVE_FORK_TO_BOTTOM:
             self.move_and_wait_for_sensor_trigger(LifterDirection.MOVE_DOWN)
-            self.timed_move(LifterDirection.MOVE_DOWN, 1.0)
             response.reached = self.completed
             
         elif self.received_state == LifterState.MOVE_FORK_TO_TOP:
             self.move_and_wait_for_sensor_trigger(LifterDirection.MOVE_UP)
-            self.timed_move(LifterDirection.MOVE_UP, 1.0)
             response.reached = self.completed
             
         elif self.received_state == LifterState.MOVE_FORK_TO_MIDDLE:
@@ -66,7 +64,7 @@ class LifterStateManager(Node):
             #First check if the bottom sensor is triggered when moving down
             if sensor_down and direction == LifterDirection.MOVE_DOWN:
                 self.get_logger().info("Bottom sensor triggered")
-                self.lifter.timed_move(direction, 1.0)
+                self.lifter.timed_move(direction, 3.0)
                 self.get_logger().info("Moving down completed, stopped.")
                 self.completed = True
                 break
@@ -74,7 +72,7 @@ class LifterStateManager(Node):
             #Then check if the top sensor is triggered when moving up
             elif sensor_up and direction == LifterDirection.MOVE_UP:
                 self.get_logger().info("Top sensor triggered")
-                self.lifter.timed_move(direction, 1.0)
+                self.lifter.timed_move(direction, 10.0)
                 self.get_logger().info("Moving up completed, stopped.")
                 self.completed = True
                 break
