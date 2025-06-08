@@ -22,7 +22,7 @@ mcl_args = {
     'HZ' : 20.0,
     'sim': False,
     'broadcast_tf' : True,
-    'ekf_w_mcl' : True,
+    'use_ekf' : True,
 }
 
 def generate_launch_description():
@@ -111,7 +111,7 @@ def generate_launch_description():
             parameters=[
                 {
                     'broadcast_tf' : LaunchConfiguration('broadcast_tf'),
-                    'ekf_w_mcl' : LaunchConfiguration('ekf_w_mcl'),
+                    'mcl_aid' : LaunchConfiguration('use_ekf'),
                 }
             ],
         ),

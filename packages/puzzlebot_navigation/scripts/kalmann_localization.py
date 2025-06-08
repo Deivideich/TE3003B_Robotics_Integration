@@ -2,7 +2,7 @@
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import JointState
-from std_msgs.msg import Header, Int32
+from std_msgs.msg import Header, Int32, Bool
 from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped
 from nav_msgs.msg import Odometry
 import math
@@ -29,9 +29,9 @@ class KalmanNode(Node):
         
         # create broadcast tf param
         self.declare_parameter('broadcast_tf', True)
-        self.declare_parameter('ekf_w_mcl', False)
+        self.declare_parameter('mcl_aid', False)
         self.broadcast_tf = self.get_parameter('broadcast_tf').get_parameter_value().bool_value
-        self.ekf_w_mcl = self.get_parameter('ekf_w_mcl').get_parameter_value().bool_value
+        self.mcl_aid = self.get_parameter('mcl_aid').get_parameter_value().bool_value
         self.initial_pose = False
 
         # SUBSCRIBERS
@@ -45,6 +45,7 @@ class KalmanNode(Node):
         # self.pub_pos = self.create_publisher(PoseStamped, '/estimated_pose', 10)
         self.pub_pos = self.create_publisher(PoseWithCovarianceStamped, '/ekf_pose', 10)
         self.inital_pose_pub = self.create_publisher(PoseWithCovarianceStamped, '/initialpose', 10)
+        self.tf_mutex_pub = self.create_publisher(Bool, '/ekf_tf_mutex', 10)
         
         # debug marker publisher to see projected landmarks
         self.debug_aruco_marker_pub = self.create_publisher(Marker, '/debug_aruco', 10)
@@ -468,19 +469,28 @@ class KalmanNode(Node):
             # self.get_logger().info(f'Kalman Gain:\n{self.Kalmann_gain}')
             self.calc_miu()
             self.calc_sigma()  
-            self.landmark_status = False      
+            self.landmark_status = False
+            if (self.mcl_aid):
+                self.tf_mutex = True    
         # If landmark is not visible, use prediction (Dead Reckoning only)
         else:
             self.uPose = self.uHat
             self.Sigma_cov = self.Sigma_hat
+            if (self.mcl_aid):
+                self.tf_mutex = False
 
         # self.get_logger().info(f'Pose actual: x={self.uPose[0,0]:.2f}, y={self.uPose[1,0]:.2f}, θ={self.uPose[2,0]:.2f}')
         
-        if ((self.broadcast_tf and not self.ekf_w_mcl) or (self.broadcast_tf and not self.initial_pose and self.ekf_w_mcl)):
-            self.broadcast_transform()
+        self.tf_mutex_pub.publish(self.tf_mutex)
         self.set_previous()
         elapsed_time = time.perf_counter() - start_time
         self.get_logger().info(f"[⏱️] Tiempo del ciclo Kalman: {elapsed_time:.4f} segundos")
+
+        if (self.broadcast_tf):
+            if (self.mcl_aid and not self.tf_mutex):
+               return 
+            self.broadcast_transform()
+
 
 
     def timer_callback(self):

@@ -7,6 +7,7 @@ from time import time
 import rclpy
 from rclpy.node import Node
 from nav_msgs.msg import OccupancyGrid, Odometry
+from std_msgs.ms import Bool
 from sensor_msgs.msg import LaserScan
 from geometry_msgs.msg import Pose, PoseWithCovarianceStamped, TransformStamped, PoseArray, PoseStamped
 import tf2_ros
@@ -33,7 +34,7 @@ ARGS = {
     'HZ' : 20.0,
     'sim': False,
     'broadcast_tf' : True,
-    'ekf_w_mcl' : False,
+    'use_ekf' : False,
 }
 class MCLNode(Node):
     def __init__(self):
@@ -53,7 +54,7 @@ class MCLNode(Node):
         self.declare_parameter('HZ', ARGS['HZ'])
         self.declare_parameter('sim', ARGS['sim'])
         self.declare_parameter('broadcast_tf', ARGS['broadcast_tf'])
-        self.declare_parameter('ekf_w_mcl', ARGS['ekf_w_mcl'])
+        self.declare_parameter('use_ekf', ARGS['use_ekf'])
 
         self.initialize_params()
 
@@ -77,7 +78,7 @@ class MCLNode(Node):
         self.scan_received = False        
         self.predictionCounter = 0
 
-        self.pose_overwriten = False
+        self.ekf_tf_mutex = False 
 
         #### TF HANDLERS ####
         self.tf_buffer = tf2_ros.Buffer()
@@ -96,6 +97,7 @@ class MCLNode(Node):
         self.create_subscription(Odometry, '/odom', self.odom_callback, qos)
         self.create_subscription(LaserScan, '/scan', self.scan_callback, qos)
         self.create_subscription(PoseWithCovarianceStamped, '/initialpose', self.pose_overwrite, qos)
+        self.create_subscription(Bool, '/ekf_tf_mutex', self.update_mutex, qos)
 
         #### TIMER ####
         self.timer = self.create_timer(0.05, self.mcl_loop)
@@ -108,7 +110,7 @@ class MCLNode(Node):
         self.useClustering = self.get_parameter('useClustering').get_parameter_value().bool_value
         self.num_particles = self.get_parameter('numParticles').get_parameter_value().integer_value
         self.scan_step = self.get_parameter('scanStep').get_parameter_value().integer_value
-        self.ekf_w_mcl = self.get_parameter('ekf_w_mcl').get_parameter_value().bool_value
+        self.use_ekf = self.get_parameter('use_ekf').get_parameter_value().bool_value
         self.broadcast_tf = self.get_parameter('broadcast_tf').get_parameter_value().bool_value
         self.num_dimensions = 3
         self.min_cluster_distance = self.get_parameter('minClusterDistance').get_parameter_value().double_value
@@ -140,6 +142,9 @@ class MCLNode(Node):
         msg.pose.pose.orientation.w = q[3]
 
         self.pose_pub.publish(msg)
+
+    def update_mutex(self, msg):
+        self.ekf_tf_mutex = msg.data
 
     def map_callback(self, msg):    
         self.map = msg
@@ -183,7 +188,6 @@ class MCLNode(Node):
         # Initialize particles with the new pose
         self.particles = [(x, y, theta) for _ in range(self.num_particles)]
         self.resample_particles()
-        self.pose_overwriten = True
 
             
     def initialize_particles(self):
@@ -560,9 +564,12 @@ class MCLNode(Node):
                 self.predictionCounter = 0
 
         self.publish_particles()
-        if self.pose_overwriten:
-            self.broadcast_transform()
-        self.publish_estimated_pose()   
+        self.publish_estimated_pose()
+
+        if self.broadcast_tf:
+            if self.use_ekf and self.ekf_tf_mutex:
+                return
+            self.broadcast_transform()   
 
         # self.get_logger().info(f"Elapsed time: {time() - self.prev_time}")
 
