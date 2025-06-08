@@ -35,7 +35,7 @@ class KalmanNode(Node):
         self.initial_pose = False
 
         # SUBSCRIBERS
-        qos = rclpy.qos.QoSProfile(depth=1)
+        qos = rclpy.qos.QoSProfile(depth=10)
         qos.reliability = rclpy.qos.QoSReliabilityPolicy.BEST_EFFORT
         self.create_subscription(JointState, '/joint_states', self.joint_state_callback, qos)
         self.create_subscription(Int32, '/aruco_id', self.aruco_callback, qos) #Subscriber del ARUCO id
@@ -101,7 +101,7 @@ class KalmanNode(Node):
 
         #TF HANDLERS
         self.tf_buffer = Buffer()
-        self.tf_listener = TransformListener(self.tf_buffer, self)
+        self.tf_listener = TransformListener(self.tf_buffer, self, qos=qos)
         self.tf_broadcaster = TransformBroadcaster(self)
 
         time.sleep(1)
@@ -481,7 +481,7 @@ class KalmanNode(Node):
 
         # self.get_logger().info(f'Pose actual: x={self.uPose[0,0]:.2f}, y={self.uPose[1,0]:.2f}, θ={self.uPose[2,0]:.2f}')
         
-        self.tf_mutex_pub.publish(self.tf_mutex)
+        self.tf_mutex_pub.publish(Bool(data=self.tf_mutex))
         self.set_previous()
         elapsed_time = time.perf_counter() - start_time
         self.get_logger().info(f"[⏱️] Tiempo del ciclo Kalman: {elapsed_time:.4f} segundos")
