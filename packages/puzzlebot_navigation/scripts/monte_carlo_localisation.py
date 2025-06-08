@@ -7,7 +7,7 @@ from time import time
 import rclpy
 from rclpy.node import Node
 from nav_msgs.msg import OccupancyGrid, Odometry
-from std_msgs.ms import Bool
+from std_msgs.msg import Bool
 from sensor_msgs.msg import LaserScan
 from geometry_msgs.msg import Pose, PoseWithCovarianceStamped, TransformStamped, PoseArray, PoseStamped
 import tf2_ros
@@ -80,9 +80,14 @@ class MCLNode(Node):
 
         self.ekf_tf_mutex = False 
 
+        
+        qos = rclpy.qos.QoSProfile(depth=10)
+        qos.reliability = rclpy.qos.QoSReliabilityPolicy.BEST_EFFORT
+        
+        
         #### TF HANDLERS ####
         self.tf_buffer = tf2_ros.Buffer()
-        self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
+        self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self, qos=qos)
         self.tf_broadcaster = TransformBroadcaster(self)
 
         #### PUBLISHERS ####
@@ -91,8 +96,7 @@ class MCLNode(Node):
         self.particles_pub = self.create_publisher(PoseArray, '/particle_cloud', 10)
         
         #### SUBSCRIBERS ####
-        qos = rclpy.qos.QoSProfile(depth=1)
-        qos.reliability = rclpy.qos.QoSReliabilityPolicy.BEST_EFFORT
+        
         self.create_subscription(OccupancyGrid, '/map', self.map_callback, qos)
         self.create_subscription(Odometry, '/odom', self.odom_callback, qos)
         self.create_subscription(LaserScan, '/scan', self.scan_callback, qos)
