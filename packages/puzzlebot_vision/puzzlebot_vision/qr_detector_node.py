@@ -31,21 +31,26 @@ class QRDetectorNode(Node):
         self.bridge = CvBridge()
 
         # tf2 buffer and listener
+        # Subscriber
+        qos = rclpy.qos.QoSProfile(depth=10)
+        qos.reliability = rclpy.qos.QoSReliabilityPolicy.BEST_EFFORT
+        
         self.tf_buffer = tf2_ros.Buffer()
-        self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
+        self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self, qos=qos)
 
         # Publishers
         self.qr_detections_pub = self.create_publisher(QRCodeArray, '/vision/qr_detections', 10)
         self.qr_image_pub = self.create_publisher(Image, '/vision/qr_detections/image', 10)
+        self.qr_image_compressed_pub = self.create_publisher(CompressedImage, '/vision/qr_detections/image/compressed', 10)
         self.qr_pose_pub = self.create_publisher(PoseStamped, '/vision/qr_pose', 10)
 
-        # Subscriber
+        
         if self.compressed_camera_topic:
             self.image_sub = self.create_subscription(
                 CompressedImage,
                 self.compressed_camera_topic,
                 self.compressed_image_callback,
-                10
+                qos
             )
             self.get_logger().info(f'Subscribed to compressed camera topic: {self.compressed_camera_topic}')
         else:
@@ -53,7 +58,7 @@ class QRDetectorNode(Node):
                 Image,
                 self.camera_topic,
                 self.image_callback,
-                10
+                qos
             )
             self.get_logger().info(f'Subscribed to camera topic: {self.camera_topic}')
 
@@ -107,7 +112,7 @@ class QRDetectorNode(Node):
                 pose_stamped_base.header.frame_id = "map"
                 pose_stamped_base.header.stamp = self.get_clock().now().to_msg()
                 pose_stamped_base.pose = tf2_geometry_msgs.do_transform_pose(pose_cam, transform)
-            except (LookupException, ExtrapolationException) as e:
+            except Exception as e:
                 self.get_logger().warn(f'Could not transform QR pose: {e}')
             qr.pose_stamped = pose_stamped_base
             self.qr_pose_pub.publish(pose_stamped_base)
@@ -121,7 +126,12 @@ class QRDetectorNode(Node):
         qr_array_msg.qrcodes = detected_qrs
         self.qr_detections_pub.publish(qr_array_msg)
 
-        
+        msg_comp = CompressedImage()
+        result, endcoded = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 50])
+        msg_comp.format = 'jpeg'
+        msg_comp.data = endcoded.tobytes()
+        self.qr_image_compressed_pub.publish(msg_comp)
+        print("published")    
 
 def main(args=None):
     rclpy.init(args=args)
