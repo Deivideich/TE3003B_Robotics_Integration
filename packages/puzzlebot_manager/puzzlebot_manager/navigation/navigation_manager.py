@@ -23,8 +23,13 @@ class NavigationManager():
         
         self.current_exploration_goal = 0
         self.truck_locations = []
+        self.truck_named_locations = {
+            'red_truck': None,
+            'yellow_truck': None,
+            'gray_truck': None
+        }
         self.exploration_goals = []
-        self.exploration_goal_active = False
+        self.navigation_goal_active = False
         
         self.node.get_logger().info("Initializing NavigationManager...")
     
@@ -81,14 +86,67 @@ class NavigationManager():
             self.exploration_goals = []
         return self.exploration_goals
     
+    def go_to_truck_location(self, truck_index: int = -1, truck_type : str = "", wait = False):
+        """
+        Send a navigation goal to the controller server to go to a truck location.
+        If wait is True, wait for the result.
+        """
+        if self.mock_data:
+            self.node.get_logger().info("Mocking navigation to truck location...")
+            return True
+        
+        goal = None
+        if truck_index > 0 and truck_index < len(self.truck_locations):
+            goal = self.truck_locations[truck_index]
+            self.node.get_logger().info(f"Sending navigation goal to truck {truck_index}...")
+        
+        elif truck_type in self.truck_named_locations:
+            goal = self.truck_locations[self.truck_named_locations[truck_type]]
+            self.node.get_logger().info(f"Sending navigation goal to truck type '{truck_type}'...")
+        
+        if goal is None:
+            self.node.get_logger().error(f"Invalid truck index or type: {truck_index}, {truck_type}")
+            return False
+        # Send goal asynchronous
+        self.send_navigation_goal(goal, wait)
+        
+        return True
+    
+    def send_navigation_goal(self, goal: PoseStamped, wait = False):
+        """
+        Send a navigation goal to the controller server.
+        If wait is True, wait for the result.
+        """
+        if self.mock_data:
+            self.node.get_logger().info("Mocking navigation goal...")
+            return True
+        
+        # Start new navigation goal if not currently navigating
+        if not self.navigation_goal_active:
+            self.node.get_logger().info("Sending navigation goal...")
+            goal_msg = ControllerAction.Goal()
+            goal_msg.goal = goal
+            goal_msg.ignore_obstacles = True
+            
+            # Send goal asynchronous
+            self.navigation_action_client.wait_for_server()
+            navigation_goal_future = self.navigation_action_client.send_goal_async(goal_msg)
+            navigation_goal_future.add_done_callback(self.navigation_goal_callback)
+            
+            self.navigation_goal_active = True
+            self.node.get_logger().info(f"Navigation goal sent")
+            
+            if wait:
+                while self.navigation_goal_active:
+                    time.sleep(0.1)  # Wait until the goal is completed
+    
     def explore(self):
         if self.mock_data:
             self.node.get_logger().info("Mocking exploration...")
             return True
         
-        
         # Start new exploration if not currently exploring
-        if not self.exploration_goal_active:
+        if not self.navigation_goal_active:
             self.node.get_logger().info("Going for next exploration goal...")
             goal_msg = ControllerAction.Goal()
             goal_msg.goal = self.exploration_goals[self.current_exploration_goal]
@@ -97,39 +155,35 @@ class NavigationManager():
                 self.current_exploration_goal = 0
             goal_msg.ignore_obstacles = True
             
-            # Send goal asynchronously
+            # Send goal asynchronous
+            self.navigation_action_client.wait_for_server()
             navigation_goal_future = self.navigation_action_client.send_goal_async(goal_msg)
-            # rclpy.spin_until_future_complete(self.node, send_goal_future)
-            navigation_goal_future.add_done_callback(self.exploration_goal_callback)
+            navigation_goal_future.add_done_callback(self.navigation_goal_callback)
             
-            self.exploration_goal_active = True
+            self.navigation_goal_active = True
             self.node.get_logger().info(f"Exploration goal sent")
         
         return False
     
-    def exploration_goal_callback(self, future):
+    def navigation_goal_callback(self, future):
         self.navigation_goal_handle = future.result()
 
         self._get_result_future = self.navigation_goal_handle.get_result_async()
-        self._get_result_future.add_done_callback(self.exploration_result_callback)
+        self._get_result_future.add_done_callback(self.navigation_result_callback)
         
-    def exploration_result_callback(self, future):
+    def navigation_result_callback(self, future):
         result = future.result().result
-        if result.success:
-            self.node.get_logger().info(f"Exploration goal {self.current_exploration_goal - 1} completed successfully.")
-        else:
-            self.node.get_logger().error(f"Exploration goal {self.current_exploration_goal - 1} failed.")
         
-        self.exploration_goal_active = False
+        self.navigation_goal_active = False
         
     def stop_exploration(self):
         """
         Manually stop ongoing exploration.
         """
-        if self.exploration_goal_active:
+        if self.navigation_goal_active:
             self.node.get_logger().info("Stopping ongoing exploration...")
             # Cancel the current exploration goal
             cancel_future = self.navigation_goal_handle.cancel_goal_async()
-            self.exploration_goal_active = False
+            self.navigation_goal_active = False
             self.node.get_logger().info("Exploration stopped.")
         return False

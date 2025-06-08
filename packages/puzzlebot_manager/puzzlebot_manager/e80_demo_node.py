@@ -81,24 +81,29 @@ class PuzzlebotManager(Node):
             
         elif self.current_state == PuzzlebotState.IDENTIFY_TRUCKS:
             self.get_logger().info("Identifying trucks...")
-            # Here you would implement the logic to identify trucks
-            # For now, we will just simulate it
-            time.sleep(2)
             
+            for i, truck_location in enumerate(self.navigation_manager.truck_locations):
+                self.navigation_manager.go_to_truck_location(truck_index=i)
+                print("waiting for truck inference")
+                time.sleep(5)
+                truck_label = self.vision_manager.truck_classify(wait=True)
+                self.navigation_manager.truck_named_locations[truck_label] = truck_location
+                self.get_logger().info(f"Truck {truck_label} identified at location {truck_location.pose.position.x}, {truck_location.pose.position.y}.")
+                
             self.get_logger().info("Trucks identified.")
-            
+            self.get_logger().info("Starting exploration...")
             self.current_state = PuzzlebotState.EXPLORING
+            while True:
+                time.sleep(0.1)
         
         elif self.current_state == PuzzlebotState.EXPLORING:
-            self.get_logger().info("Exploring...")
             
             self.navigation_manager.explore()
             
             if len(self.vision_manager.get_qr_codes()) != 0:
                 self.navigation_manager.stop_exploration()
                 self.current_state = PuzzlebotState.PICK
-            print("exit exploring state")    
-                    
+        
         elif self.current_state == PuzzlebotState.PICK:
             self.get_logger().info("Picking an object...")
             # Here you would implement the logic to pick an object
@@ -108,7 +113,7 @@ class PuzzlebotManager(Node):
             self.get_logger().info("Object picked.")
             
             self.current_state = PuzzlebotState.PLACE
-            
+        
         elif self.current_state == PuzzlebotState.PLACE:
             self.get_logger().info("Placing the object in a truck...")
             # Here you would implement the logic to place an object in a truck
