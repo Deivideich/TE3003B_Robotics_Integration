@@ -94,7 +94,8 @@ class PuzzlebotManager(Node):
             
             self.navigation_manager.explore()
             
-            if len(self.vision_manager.detect_qrs()) != 0:
+            if len(self.vision_manager.get_qr_codes()) != 0:
+                self.navigation_manager.stop_exploration()
                 self.current_state = PuzzlebotState.PICK
             print("exit exploring state")    
                     

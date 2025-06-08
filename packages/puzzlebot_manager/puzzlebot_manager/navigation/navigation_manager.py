@@ -98,9 +98,9 @@ class NavigationManager():
             goal_msg.ignore_obstacles = True
             
             # Send goal asynchronously
-            send_goal_future = self.navigation_action_client.send_goal_async(goal_msg)
+            navigation_goal_future = self.navigation_action_client.send_goal_async(goal_msg)
             # rclpy.spin_until_future_complete(self.node, send_goal_future)
-            send_goal_future.add_done_callback(self.exploration_goal_callback)
+            navigation_goal_future.add_done_callback(self.exploration_goal_callback)
             
             self.exploration_goal_active = True
             self.node.get_logger().info(f"Exploration goal sent")
@@ -108,9 +108,9 @@ class NavigationManager():
         return False
     
     def exploration_goal_callback(self, future):
-        goal_handle = future.result()
+        self.navigation_goal_handle = future.result()
 
-        self._get_result_future = goal_handle.get_result_async()
+        self._get_result_future = self.navigation_goal_handle.get_result_async()
         self._get_result_future.add_done_callback(self.exploration_result_callback)
         
     def exploration_result_callback(self, future):
@@ -129,7 +129,7 @@ class NavigationManager():
         if self.exploration_goal_active:
             self.node.get_logger().info("Stopping ongoing exploration...")
             # Cancel the current exploration goal
-            cancel_future = self.navigation_action_client.cancel_all_goals_async()
+            cancel_future = self.navigation_goal_handle.cancel_goal_async()
             self.exploration_goal_active = False
             self.node.get_logger().info("Exploration stopped.")
         return False

@@ -5,13 +5,14 @@ import numpy as np
 from numpy.typing import NDArray
 import os
 import sys
+from pyzbar import pyzbar
+from PIL import Image
 
 class QRDetector:
     def __init__(self, qr_size=0.05):
         self.qr_size = qr_size
         self.camera_matrix = None
         self.dist_coeffs = None
-        self.qr_detector = cv2.QRCodeDetector()
         self.object_points = self._get_qr_object_points()
 
         self._load_calibration()
@@ -44,17 +45,27 @@ class QRDetector:
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         height, width = frame.shape[:2]
         
-        retval, decoded_info, points, _ = self.qr_detector.detectAndDecodeMulti(gray)
+        # Use pyzbar for QR detection
+        pil_image = Image.fromarray(gray)
+        detected_qrs = pyzbar.decode(pil_image)
         detected_codes = []
 
-        if retval:
-            for content, corner in zip(decoded_info, points):
-                if content and corner.shape[0] == 4:
-                    image_points = corner.astype(np.float32)
-
+        for qr in detected_qrs:
+            if qr.type == 'QRCODE':
+                content = qr.data.decode('utf-8')
+                
+                # Extract corner points from pyzbar polygon
+                points = qr.polygon
+                if len(points) == 4:
+                    # Convert to numpy array in the correct format
+                    corner = np.array([[p.x, p.y] for p in points], dtype=np.float32)
+                    
+                    # Reorder points to match expected format: top-left, top-right, bottom-right, bottom-left
+                    corner = self._reorder_corners(corner)
+                    
                     success, rvec, tvec = cv2.solvePnP(
                         objectPoints=self.object_points,
-                        imagePoints=image_points,
+                        imagePoints=corner,
                         cameraMatrix=self.camera_matrix,
                         distCoeffs=self.dist_coeffs
                     )
@@ -63,25 +74,40 @@ class QRDetector:
                         # Get normalized coordinates
                         x_coords = corner[:, 0] / width
                         y_coords = corner[:, 1] / height
-                        
-                        
-                        result = {
-                            'content': content,
-                            'corner': corner,
-                            'rvec': rvec.flatten(),
-                            'tvec': tvec.flatten()
-                        }
 
-                        qr = QRCode()
-                        qr.x1 = float(min(x_coords))
-                        qr.x2 = float(max(x_coords))
-                        qr.y1 = float(min(y_coords))
-                        qr.y2 = float(max(y_coords))
-                        qr.content = content
-                        qr.rvec = rvec.flatten().astype(np.float32).tolist()
-                        qr.tvec = tvec.flatten().astype(np.float32).tolist()
+                        qr_msg = QRCode()
+                        qr_msg.x1 = float(min(x_coords))
+                        qr_msg.x2 = float(max(x_coords))
+                        qr_msg.y1 = float(min(y_coords))
+                        qr_msg.y2 = float(max(y_coords))
+                        qr_msg.content = content
+                        qr_msg.rvec = rvec.flatten().astype(np.float32).tolist()
+                        qr_msg.tvec = tvec.flatten().astype(np.float32).tolist()
 
-                        detected_codes.append(qr)
+                        detected_codes.append(qr_msg)
 
         return detected_codes
+    
+    def _reorder_corners(self, corners):
+        """Reorder corners to: top-left, top-right, bottom-right, bottom-left"""
+        # Calculate center point
+        center = np.mean(corners, axis=0)
+        
+        # Sort by angle from center
+        def angle_from_center(point):
+            return np.arctan2(point[1] - center[1], point[0] - center[0])
+        
+        # Sort corners by angle (counter-clockwise from right)
+        sorted_corners = sorted(corners, key=angle_from_center)
+        
+        # Find top-left corner (smallest sum of x+y)
+        sums = [p[0] + p[1] for p in sorted_corners]
+        top_left_idx = np.argmin(sums)
+        
+        # Reorder starting from top-left, going clockwise
+        reordered = []
+        for i in range(4):
+            reordered.append(sorted_corners[(top_left_idx + i) % 4])
+        
+        return np.array(reordered, dtype=np.float32)
 
