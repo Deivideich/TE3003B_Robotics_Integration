@@ -24,7 +24,7 @@ class Publisher(Node):
             self.frame = CvBridge().imgmsg_to_cv2(msg, desired_encoding='bgr8')
             if self.width != 0 and self.height != 0:
                 self.frame = cv2.resize(self.frame, (self.width, self.height))
-            result, endcoded = cv2.imencode('.jpg', self.frame, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
+            result, endcoded = cv2.imencode('.jpg', self.frame, [int(cv2.IMWRITE_JPEG_QUALITY), 50])
             self.msg_comp.format = 'jpeg'
             self.msg_comp.data = endcoded.tobytes()
             self.comp_pub.publish(self.msg_comp)
