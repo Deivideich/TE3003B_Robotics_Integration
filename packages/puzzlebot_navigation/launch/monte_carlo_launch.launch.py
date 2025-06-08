@@ -21,6 +21,8 @@ mcl_args = {
     'repropagateCountNeeded': 1,
     'HZ' : 20.0,
     'sim': False,
+    'broadcast_tf' : True,
+    'use_ekf' : True,
 }
 
 def generate_launch_description():
@@ -84,12 +86,12 @@ def generate_launch_description():
             arguments=["-d", default_rviz_config_path]
         ),
         
-        Node(
-            package="puzzlebot_navigation",
-            executable="custom_map_server.py",
-            name="custom_map_server",
-            output="screen",
-        ),
+        # Node(
+        #     package="puzzlebot_navigation",
+        #     executable="custom_map_server.py",
+        #     name="custom_map_server",
+        #     output="screen",
+        # ),
         
         Node(
             package="puzzlebot_navigation",
@@ -98,6 +100,19 @@ def generate_launch_description():
             output="screen",
             parameters=[
                 {key: LaunchConfiguration(key) for key in mcl_args.keys()}
+            ],
+        ),
+
+        Node(
+            package="puzzlebot_navigation",
+            executable="kalmann_localization.py",
+            name="kalmann_localization",
+            output="screen",
+            parameters=[
+                {
+                    'broadcast_tf' : LaunchConfiguration('broadcast_tf'),
+                    'mcl_aid' : LaunchConfiguration('use_ekf'),
+                }
             ],
         ),
 

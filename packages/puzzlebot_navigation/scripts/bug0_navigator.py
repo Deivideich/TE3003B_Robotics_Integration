@@ -59,7 +59,7 @@ class BugController(Node):
         ################### ROBOT CONTROL PARAMETERS ##################
         
         # Maximum forward speed of the robot in meters per second
-        self.forward_speed = 0.05 
+        self.forward_speed = 0.05
         
         # Current position and orientation of the robot in the global 
         # reference frame
@@ -96,11 +96,11 @@ class BugController(Node):
         self.goal_max_idx =  None # len(self.goal_x_coordinates) - 1 
         
         # +/- 2.0 degrees of precision
-        self.yaw_precision = 2.0 * (math.pi / 180) 
+        self.yaw_precision = 5.0 * (math.pi / 180) 
         
         # How quickly we need to turn when we need to make a heading
         # adjustment (rad/s)
-        self.turning_speed_yaw_adjustment = 0.25
+        self.turning_speed_yaw_adjustment = 0.35
         
         # Need to get within +/- 0.2 meter (20 cm) of (x,y) goal
         self.dist_precision = 0.2
@@ -121,7 +121,7 @@ class BugController(Node):
         self.dist_thresh_wf = 0.35 # in meters  
         
         # We don't want to get too close to the wall though.
-        self.dist_too_close_to_wall = 0.2 # in meters
+        self.dist_too_close_to_wall = 0.25 # in meters
         
         self.bug0_switch = "ON"
         
@@ -168,7 +168,7 @@ class BugController(Node):
         self.leave_point_to_hit_point_diff = 0.25 # in meters
         
         # the range of the scanner to assume way to goal is free
-        self.range_scanner_free = 90 # in degrees
+        self.range_scanner_free = 60 # in degrees
         
         self.get_logger().info('BugController node has been started.')
         
@@ -227,6 +227,7 @@ class BugController(Node):
             
         
         # clean infs
+        self.curr_scan = msg
         
         if self.sim:
             self.right_dist = np.mean(msg.ranges[(90-range):(90+range)]) # Left
@@ -237,30 +238,55 @@ class BugController(Node):
             self.left_dist = np.mean(msg.ranges[(270-range):(270+range)])
             self.leftback_dist = np.mean(msg.ranges[(315-range):(315+range)]) # Left-back
         else:
-            self.front_dist = np.mean(np.concatenate([
-                msg.ranges[360-range:],
-                msg.ranges[:range]]))
-            self.leftfront_dist = np.mean(msg.ranges[(45-range):(45+range)]) # Left-front
-            self.left_dist = np.mean(msg.ranges[(90-range):(90+range)]) # Left
-            self.leftback_dist = np.mean(msg.ranges[(135-range):(135+range)]) # Left-back
-            self.rightfront_dist = np.mean(msg.ranges[(315-range):(315+range)]) # Right-front
-            self.right_dist = np.mean(msg.ranges[(270-range):(270+range)]) # Right
-            self.rightback_dist = np.mean(msg.ranges[(225-range):(225+range)]) # Right-back
+            self.front_dist = self.get_mean(360-range, range)
+            self.leftfront_dist = self.get_mean(45-range, 45+range) # Right-front
+            self.left_dist = self.get_mean(90-range, 90+range) # Right
+            self.leftback_dist = self.get_mean(135-range, 135+range) # Right-back
+            self.rightfront_dist = self.get_mean(315-range, 315+range) # Left-front
+            self.right_dist = self.get_mean(270-range, 270+range) # Left
+            self.rightback_dist = self.get_mean(225-range, 225+range) # Left-back
         
         # Print the distance values (in meters) for testing
-        self.get_logger().info('L:%f LF:%f F:%f RF:%f R:%f' % (
-            self.left_dist,
-            self.leftfront_dist,
-            self.front_dist,
-            self.rightfront_dist,
-            self.right_dist))
+        # self.get_logger().info('L:%f LF:%f F:%f RF:%f R:%f' % (
+        #     self.left_dist,
+        #     self.leftfront_dist,
+        #     self.front_dist,
+        #     self.rightfront_dist,
+        #     self.right_dist))
         
-        self.curr_scan = msg
+        
         
         if self.goal_x_coordinates == False and self.goal_y_coordinates == False:
             return
         
-        print(f"is way free: {self.is_way_to_goal_free}")
+        
+        
+    def get_mean(self, range_min, range_max):
+        """
+        Get the mean of the laser scan readings within a certain range.
+        """
+        
+        # Get the laser scan readings within the specified range
+        # check if wrap needed
+        if range_min > range_max:
+            readings = self.curr_scan.ranges[range_min:] + self.curr_scan.ranges[:range_max]
+        else:
+            readings = self.curr_scan.ranges[range_min:range_max]
+        
+        # Filter out inf values
+        readings = np.array(readings, dtype=float)
+        readings[readings == float('inf')] = float('nan')  # Replace inf with nan
+        readings = readings[~np.isnan(readings)]  # Remove nan values
+        # If there are no valid readings, return infinity
+        if len(readings) == 0:
+            # self.get_logger().warn('No valid laser scan readings found in the specified range.')
+            return float('inf')
+        
+        # Return the mean of the readings
+        if len(readings) > 0:
+            return sum(readings) / len(readings)
+        else:
+            return float('inf')
             
     def robot_pose_callback(self, msg):
         """
@@ -281,7 +307,6 @@ class BugController(Node):
         if self.goal_x_coordinates == False and self.goal_y_coordinates == False:
             return
         
-        return
         
         # See if the bug0 algorithm is activated. If yes, call bug0()
         if self.bug0_switch == "ON":
@@ -431,6 +456,9 @@ class BugController(Node):
         if self.sim:
             start_index = int((start_angle + 180))
             end_index = int((end_angle + 180))
+        else:
+            start_index = int(start_angle)
+            end_index = int(end_angle)
         # ensure between 0 and 360 degrees
         start_index = start_index % 360
         end_index = end_index % 360
@@ -490,7 +518,6 @@ class BugController(Node):
         rightfront_covered = self.rightfront_dist < d
         right_covered = self.right_dist < d # or self.rightback_dist < d
         
-        
         if self.front_dist > d and self.rightfront_dist > d and not right_covered:
             self.wall_following_state = "search for wall"
             msg.linear.x = self.forward_speed
@@ -500,12 +527,13 @@ class BugController(Node):
             if (self.rightfront_dist < self.dist_too_close_to_wall or self.right_dist < self.dist_too_close_to_wall):
                 # Getting too close to the wall
                 self.wall_following_state = "turn left too close"
-                msg.linear.x = self.forward_speed * 0.5
+                msg.linear.x = self.forward_speed * 0.25
                 msg.angular.z = self.turning_speed_wf_fast      
             else:           
                 # Go straight ahead
                 self.wall_following_state = "follow wall" 
                 msg.linear.x = self.forward_speed
+                msg.angular.z = -self.turning_speed_wf_slow
             
         else:
             self.wall_following_state = "turn left"
