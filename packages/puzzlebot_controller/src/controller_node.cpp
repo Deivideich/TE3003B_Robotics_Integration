@@ -146,6 +146,7 @@ private:
   {
     RCLCPP_INFO(this->get_logger(), "Received goal request");
     ignore_obstacles_ = goal->ignore_obstacles;
+    no_plan_ = goal->no_plan;
     return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
   }
 
@@ -356,26 +357,32 @@ private:
       {
         const auto& goal_pose = *goal_pose_;
         const auto& current_pose = *current_pose_;
-        
-        auto request = std::make_shared<puzzlebot_interfaces::srv::PlanPath::Request>();
-        request->start = current_pose;
-        request->goal = goal_pose;
 
-        auto future_result = planner_client_->async_send_request(request);
-        // Set up a callback for when the future is complete
-        while (future_result.wait_for(100ms) != std::future_status::ready);
-
-        auto response = future_result.get();
-
-        if (response->result){
-          current_path_ = response->path;
+        if (no_plan_){
+          current_path_ = {goal_pose, current_pose};
           controller_state_ = GLOBAL_CONTROLLER;
-          RCLCPP_INFO(this->get_logger(), "Succesfully found a path");
-        } else {
-          RCLCPP_WARN(this->get_logger(), "Could not find a path");
-          goal_pose_ = nullptr;
-          controller_state_ = STOPPED;
+        } else{
+          auto request = std::make_shared<puzzlebot_interfaces::srv::PlanPath::Request>();
+          request->start = current_pose;
+          request->goal = goal_pose;
+
+          auto future_result = planner_client_->async_send_request(request);
+          // Set up a callback for when the future is complete
+          while (future_result.wait_for(100ms) != std::future_status::ready);
+
+          auto response = future_result.get();
+
+          if (response->result){
+            current_path_ = response->path;
+            controller_state_ = GLOBAL_CONTROLLER;
+            RCLCPP_INFO(this->get_logger(), "Succesfully found a path");
+          } else {
+            RCLCPP_WARN(this->get_logger(), "Could not find a path");
+            goal_pose_ = nullptr;
+            controller_state_ = STOPPED;
+          }
         }
+
         controller_->resetIndex();
       }
         break;
@@ -484,6 +491,7 @@ private:
   
   ControllerStates controller_state_ = STOPPED;
   bool ignore_obstacles_ = false;  // If true, the controller will ignore obstacles
+  bool no_plan_ = false;
 };
 
 int main(int argc, char **argv) {

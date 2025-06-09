@@ -13,6 +13,7 @@ find_package(std_msgs REQUIRED)
 ament_python_install_package(${PROJECT_NAME})
 
 #Install python scripts
+file(GLOB PYTHON_TEST_SCRIPTS puzzlebot_manager/test/*.py)
 file(GLOB PYTHON_SCRIPTS puzzlebot_manager/*.py)
 file(GLOB PYTHON_LIBS puzzlebot_manager/*/*.py)
 
@@ -20,6 +21,7 @@ file(GLOB PYTHON_LIBS puzzlebot_manager/*/*.py)
 install(PROGRAMS
   ${PYTHON_SCRIPTS}
   ${PYTHON_LIBS}
+  ${PYTHON_TEST_SCRIPTS}
   DESTINATION lib/${PROJECT_NAME}
 )
 

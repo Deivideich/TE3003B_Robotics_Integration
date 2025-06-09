@@ -112,7 +112,7 @@ class NavigationManager():
         
         return True
     
-    def send_navigation_goal(self, goal: PoseStamped, wait = False):
+    def send_navigation_goal(self, goal: PoseStamped, wait = False, ignore_obstacles = False, no_plan = False):
         """
         Send a navigation goal to the controller server.
         If wait is True, wait for the result.
@@ -126,9 +126,11 @@ class NavigationManager():
             self.node.get_logger().info("Sending navigation goal...")
             goal_msg = ControllerAction.Goal()
             goal_msg.goal = goal
-            goal_msg.ignore_obstacles = True
+            goal_msg.ignore_obstacles = ignore_obstacles
+            goal_msg.no_plan = no_plan
             
             # Send goal asynchronous
+            self.node.get_logger().info("Waiting for server...")
             self.navigation_action_client.wait_for_server()
             navigation_goal_future = self.navigation_action_client.send_goal_async(goal_msg)
             navigation_goal_future.add_done_callback(self.navigation_goal_callback)
