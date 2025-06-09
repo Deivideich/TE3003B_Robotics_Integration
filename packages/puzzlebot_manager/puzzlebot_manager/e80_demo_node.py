@@ -7,6 +7,7 @@ from geometry_msgs.msg import PoseStamped
 from navigation.navigation_manager import NavigationManager
 from vision.vision_manager import VisionManager
 from lift.lift_manager import LiftManager
+from puzzlebot_lifter.lifter_state_class import LifterState
 import time
 from enum import Enum
 import yaml
@@ -59,7 +60,7 @@ class PuzzlebotManager(Node):
         self.navigation_manager.load_exploration_goals(exploration_goals_filepath)
         self.navigation_manager.load_truck_locations(truck_locations_filepath)
         
-        self.current_state = PuzzlebotState.IDENTIFY_TRUCKS
+        self.current_state = PuzzlebotState.IDENTIFY_TRUCKS                                                                                                                                 
         self.target_truck_type = None # Default truck type
         self.objects_placed = 0  # Counter for placed objects
         self.qr_goal_index = 0  # Counter for placed objects
@@ -126,7 +127,7 @@ class PuzzlebotManager(Node):
 
                 # For now, we will just simulate it
                 # Here the forklift should change state to lift
-                time.sleep(2)
+                self.lift_manager.set_lifter_state(LifterState.MOVE_FORK_TO_TOP, wait=True)
                 
                 self.get_logger().info("Object picked.")
                 
