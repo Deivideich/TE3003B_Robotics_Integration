@@ -118,11 +118,16 @@ public:
 
     planner_client_ = this->create_client<puzzlebot_interfaces::srv::PlanPath>("plan_path", rmw_qos_profile_services_default, planner_client_cb_group_);
     // bug_planner_client_ = this->create_client<puzzlebot_interfaces::srv::PlanPath>("bug_plan_path", rmw_qos_profile_services_default, planner_client_cb_group_);
+    
+    auto qos = rclcpp::QoS(rclcpp::SensorDataQoS());
+    qos.reliability(rclcpp::ReliabilityPolicy::BestEffort);
+    qos.durability(rclcpp::DurabilityPolicy::Volatile);
+    qos.keep_last(1);
 
-    curr_pose_listener_ = this->create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>(pose_topics[usingMCLPose_], 10, std::bind(&ControllerNode::poseCallback, this, _1)); 
+    curr_pose_listener_ = this->create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>(pose_topics[usingMCLPose_], qos, std::bind(&ControllerNode::poseCallback, this, _1)); 
     // goal_listener_ = this->create_subscription<geometry_msgs::msg::PoseStamped>("/goal_pose", 10, std::bind(&ControllerNode::goalCallback, this, _1)); 
-    local_map_listener_ = this->create_subscription<nav_msgs::msg::OccupancyGrid>("/local_map", 10, std::bind(&ControllerNode::localMapCallback, this, _1));
-    merged_map_listener_ = this->create_subscription<nav_msgs::msg::OccupancyGrid>("/merged_map", 10, std::bind(&ControllerNode::mergedMapCallback, this, _1));
+    local_map_listener_ = this->create_subscription<nav_msgs::msg::OccupancyGrid>("/local_map", qos, std::bind(&ControllerNode::localMapCallback, this, _1));
+    merged_map_listener_ = this->create_subscription<nav_msgs::msg::OccupancyGrid>("/merged_map", qos, std::bind(&ControllerNode::mergedMapCallback, this, _1));
     cmd_pub_ = this->create_publisher<geometry_msgs::msg::Twist>("/cmd_vel", 10);
     control_state_pub_ = this->create_publisher<std_msgs::msg::String>("/controller_state", 10);
     control_point_pub_ = this->create_publisher<geometry_msgs::msg::PoseStamped>("/control_point", 10);
