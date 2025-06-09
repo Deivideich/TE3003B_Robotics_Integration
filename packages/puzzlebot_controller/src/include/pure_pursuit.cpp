@@ -80,7 +80,7 @@ namespace puzzlebot_controllers
             try {
                 tf_buffer_->transform(*lookahead, lookahead_in_base, "base_link");
             } catch (tf2::TransformException &ex) {
-                RCLCPP_WARN(rclcpp::get_logger("PurePursuit"), "Transform failed: %s", ex.what());
+                RCLCPP_WARN(rclcpp::get_logger("PurePursuit"), "Transform failed on controller: %s", ex.what());
                 return false;
             }
 
