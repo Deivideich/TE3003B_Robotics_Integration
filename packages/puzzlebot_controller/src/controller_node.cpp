@@ -332,6 +332,8 @@ private:
       auto result = std::make_shared<ControllerAction::Result>();
       result->success = true;
       goal_handle->succeed(result);
+      controller_->resetIndex();
+      current_path_->empty();
       return;
     }
 
@@ -358,6 +360,9 @@ private:
         const auto& goal_pose = *goal_pose_;
         const auto& current_pose = *current_pose_;
 
+        current_path_->empty();
+        controller_->resetIndex();
+
         if (no_plan_){
           current_path_ = {goal_pose, current_pose};
           controller_state_ = GLOBAL_CONTROLLER;
@@ -382,8 +387,6 @@ private:
             controller_state_ = STOPPED;
           }
         }
-
-        controller_->resetIndex();
       }
         break;
       case ControllerStates::GLOBAL_CONTROLLER:
