@@ -59,7 +59,7 @@ class PuzzlebotManager(Node):
         self.navigation_manager.load_exploration_goals(exploration_goals_filepath)
         self.navigation_manager.load_truck_locations(truck_locations_filepath)
         
-        self.current_state = PuzzlebotState.EXPLORING
+        self.current_state = PuzzlebotState.IDENTIFY_TRUCKS
         self.target_truck_type = None # Default truck type
         self.objects_placed = 0  # Counter for placed objects
         self.qr_goal_index = 0  # Counter for placed objects
