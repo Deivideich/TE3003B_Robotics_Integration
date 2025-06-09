@@ -62,7 +62,7 @@ namespace puzzlebot_controllers
                 // If orientation is aligned, stop
                 if (std::abs(yaw_error) < orientation_tolerance_) {
                     orientation_correction_ = false;
-                    // lookahead_delta_ = 0.0;  // Reset lookahead distance
+                    lookahead_delta_ = 0.0;  // Reset lookahead distance
                     cmd->linear.x = 0.0;
                     cmd->angular.z = 0.0;
                     return true;  // Goal fully reached
@@ -73,6 +73,7 @@ namespace puzzlebot_controllers
                 cmd->angular.z = std::clamp(yaw_error, -angular_speed_, angular_speed_);
                 return false;
             }
+        
 
             lookahead->header.stamp = rclcpp::Time(0);// Use current pose timestamp
             geometry_msgs::msg::PoseStamped lookahead_in_base;
@@ -89,6 +90,8 @@ namespace puzzlebot_controllers
                 RCLCPP_WARN(rclcpp::get_logger("PurePursuit"), "Effective lookahead too small, skipping command.");
                 return false;
             }
+
+            // std::cout << "[" << path_index_ << "] " <<  lookahead->pose.position.x << ", "<< lookahead->pose.position.y << std::endl;
             
             double curvature = 2.0 * lookahead_in_base.pose.position.y / (effective_lookahead * effective_lookahead);
 

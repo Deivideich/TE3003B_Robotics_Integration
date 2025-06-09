@@ -80,7 +80,7 @@ class QRDetector:
                         qr_msg.x2 = float(max(x_coords))
                         qr_msg.y1 = float(min(y_coords))
                         qr_msg.y2 = float(max(y_coords))
-                        qr_msg.content = content
+                        qr_msg.content = str(content).replace(" ", "_")
                         qr_msg.rvec = rvec.flatten().astype(np.float32).tolist()
                         qr_msg.tvec = tvec.flatten().astype(np.float32).tolist()
 

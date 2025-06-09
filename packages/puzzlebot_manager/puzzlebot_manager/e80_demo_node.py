@@ -11,6 +11,8 @@ import time
 from enum import Enum
 import yaml
 from ament_index_python.packages import get_package_share_directory
+import tf2_ros
+
 
 NUMBER_OF_OBJECTS = 3  # Number of objects to be placed in trucks
 # Mock modules for testing purposes
@@ -48,18 +50,27 @@ class PuzzlebotManager(Node):
         
         # Truck locations (poses) are stored in a yaml received as a parameter
         package_path = get_package_share_directory('puzzlebot_manager')
-        truck_locations_file = f"{package_path}/config/truck_locations.yaml"
+        truck_locations_file = f"{package_path}/config/truck_locations_sim.yaml"
         truck_locations_filepath = self.declare_parameter('truck_locations_file',
                                                         truck_locations_file).value
-        exploration_goals_file = f"{package_path}/config/exploration_goals.yaml"
+        exploration_goals_file = f"{package_path}/config/exploration_goals_sim.yaml"
         exploration_goals_filepath = self.declare_parameter('exploration_goals_file',
                                                         exploration_goals_file).value
         self.navigation_manager.load_exploration_goals(exploration_goals_filepath)
         self.navigation_manager.load_truck_locations(truck_locations_filepath)
         
-        self.current_state = PuzzlebotState.INITIALIZING
+        self.current_state = PuzzlebotState.EXPLORING
         self.target_truck_type = None # Default truck type
         self.objects_placed = 0  # Counter for placed objects
+        self.qr_goal_index = 0  # Counter for placed objects
+        self.faking_qr_pose = False
+
+        qos = rclpy.qos.QoSProfile(depth=10)
+        qos.reliability = rclpy.qos.QoSReliabilityPolicy.BEST_EFFORT
+        
+        #### TF HANDLERS ####
+        self.tf_buffer = tf2_ros.Buffer()
+        self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self, qos=qos)
         
         # 20hz
         self.state_machine_timer = self.create_timer(0.05, self.state_machine_callback, 
@@ -100,18 +111,27 @@ class PuzzlebotManager(Node):
             
             if len(self.vision_manager.get_qr_codes()) != 0:
                 self.navigation_manager.stop_exploration()
+                self.qr_goal_poses = self.vision_manager.get_qr_poses(self.faking_qr_pose)
                 self.current_state = PuzzlebotState.PICK
         
         elif self.current_state == PuzzlebotState.PICK:
             self.get_logger().info("Picking an object...")
             # Here you would implement the logic to pick an object
-            # For now, we will just simulate it
-            time.sleep(2)
-            
-            self.get_logger().info("Object picked.")
-            
-            self.current_state = PuzzlebotState.PLACE
-        
+            if len (self.qr_goal_poses) < 2:
+                self.get_logger().info(f"There is no pre-pick and picking goal poses, current poses: {len(self.qr_goal_poses)}")
+                self.current_state = PuzzlebotState.ERROR
+            else:
+                self.navigation_manager.send_navigation_goal(self.qr_goal_poses[0], wait = True, ignore_obstacles = False, no_plan = False) # Ensure pre pick position is achieved
+                self.navigation_manager.send_navigation_goal(self.qr_goal_poses[1], wait = True, ignore_obstacles = True, no_plan = True) # Grab pallet with forklift
+
+                # For now, we will just simulate it
+                # Here the forklift should change state to lift
+                time.sleep(2)
+                
+                self.get_logger().info("Object picked.")
+                
+                self.current_state = PuzzlebotState.PLACE
+            self.qr_goal_poses = []
         elif self.current_state == PuzzlebotState.PLACE:
             self.get_logger().info("Placing the object in a truck...")
             # Here you would implement the logic to place an object in a truck

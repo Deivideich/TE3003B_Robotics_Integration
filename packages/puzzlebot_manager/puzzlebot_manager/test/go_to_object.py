@@ -98,12 +98,7 @@ class GoToObjectNode(Node):
         if closest_pose is None:
             self.get_logger().warn('No valid transformed pose found')
             return
-
-        if not self.action_client.wait_for_server(timeout_sec=1.0):
-            self.get_logger().warn('Controller action server not available')
-            return
-
-
+        
         goal_pose = PoseStamped()
         goal_pose.header.frame_id = 'map'
         goal_pose.header.stamp = self.get_clock().now().to_msg()
@@ -112,6 +107,10 @@ class GoToObjectNode(Node):
         if DEBUG:
             self.get_logger().info(f'Sending goal pose: {goal_pose}')
             self.pose_pub.publish(goal_pose)
+
+        if not self.action_client.wait_for_server(timeout_sec=1.0):
+            self.get_logger().warn('Controller action server not available')
+            return
             
 
         goal_msg = ControllerAction.Goal()

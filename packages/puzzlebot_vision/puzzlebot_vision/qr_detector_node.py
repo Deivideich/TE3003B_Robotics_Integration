@@ -16,7 +16,7 @@ from tf2_ros import TransformBroadcaster
 import tf2_geometry_msgs
 from scipy.spatial.transform import Rotation as R
 
-
+QR_THRESHOLD = 0.25  # Adjust this threshold based on your needs
 
 class QRDetectorNode(Node):
     def __init__(self):
@@ -94,7 +94,7 @@ class QRDetectorNode(Node):
         transform = TransformStamped()
         transform.header.stamp = self.frame_stamp.to_msg()
         transform.header.frame_id = 'camera_base_link'
-        transform.child_frame_id = f'qr_code_{str(qr.content).replace(" ", "_")}'
+        transform.child_frame_id = f'qr_code_{str(qr.content)}'
         transform.transform.translation.x = qr.tvec[0]
         transform.transform.translation.y = qr.tvec[1]
         transform.transform.translation.z = qr.tvec[2]
@@ -134,6 +134,8 @@ class QRDetectorNode(Node):
         qr.pose_stamped = pose_stamped_base
         self.qr_pose_pub.publish(pose_stamped_base)
 
+        return pose_cam
+
     def compressed_image_callback(self, msg):
         try:
             # Convert compressed image to OpenCV format
@@ -156,20 +158,30 @@ class QRDetectorNode(Node):
     def process_frame(self, frame):
         # Detect QR codes
         self.detected_qrs = self.qr_detector.detect(frame)
+        self.valid_qrs = []
 
         # Draw QR codes on the image
         for qr in self.detected_qrs:
-            # Publish detected qrt transfrom
-            self._publish_qr_transform(qr)
+            if np.linalg.norm(qr.tvec) < QR_THRESHOLD:
+                # Publish detected qrt transfrom
+                self._publish_qr_transform(qr)
 
-            # Build pose in camera_link frame
-            self._publish_qr_posestamped(qr)
+                # Build pose in camera_link frame
+                self._publish_qr_posestamped(qr)
 
-            # Draw qr in image 
-            x1, y1 = int(qr.x1 * frame.shape[1]), int(qr.y1 * frame.shape[0])
-            x2, y2 = int(qr.x2 * frame.shape[1]), int(qr.y2 * frame.shape[0])
-            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-            cv2.putText(frame, qr.content, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+                # Draw qr in image 
+                x1, y1 = int(qr.x1 * frame.shape[1]), int(qr.y1 * frame.shape[0])
+                x2, y2 = int(qr.x2 * frame.shape[1]), int(qr.y2 * frame.shape[0])
+                cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                cv2.putText(frame, qr.content, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+
+                self.valid_qrs.append(qr)
+
+
+        # Publish QR array message
+        qr_code_array = QRCodeArray()
+        qr_code_array.qrcodes = self.valid_qrs
+        self.qr_detections_pub.publish(qr_code_array)
             
         # Publish annotated image
         qr_image_msg = self.bridge.cv2_to_imgmsg(frame, encoding='bgr8')
@@ -181,8 +193,6 @@ class QRDetectorNode(Node):
         msg_comp.format = 'jpeg'
         msg_comp.data = endcoded.tobytes()
         self.qr_image_compressed_pub.publish(msg_comp)
-
-        self.qr_detections_pub.publish(self.detected_qrs)
 
 def main(args=None):
     rclpy.init(args=args)
