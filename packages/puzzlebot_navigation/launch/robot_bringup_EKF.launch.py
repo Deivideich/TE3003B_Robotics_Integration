@@ -95,6 +95,14 @@ def generate_launch_description():
             output='screen',
             parameters=[{'usingKalman': True}],
         ),
+        
+        #Launch QR
+        Node(
+            package='puzzlebot_vision',
+            executable='qr_detector_node.py',
+            name='qr_detector_node',
+            output='screen',
+        ),
 
         #Launch EKF
         # Node(
