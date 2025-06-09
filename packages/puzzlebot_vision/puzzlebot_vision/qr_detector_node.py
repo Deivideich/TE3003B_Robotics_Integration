@@ -98,10 +98,15 @@ class QRDetectorNode(Node):
         transform.transform.translation.x = qr.tvec[0]
         transform.transform.translation.y = qr.tvec[1]
         transform.transform.translation.z = qr.tvec[2]
-        transform.transform.rotation.x = qr.rvec[0]
-        transform.transform.rotation.y = qr.rvec[1]
-        transform.transform.rotation.z = qr.rvec[2]
-        transform.transform.rotation.w = 1.0
+
+        r_matrix = cv2.Rodrigues(np.array(qr.rvec))[0]
+        q = R.from_matrix(r_matrix).as_quat()
+
+        transform.transform.rotation.x = q[0]
+        transform.transform.rotation.y = q[1]
+        transform.transform.rotation.z = q[2]
+        transform.transform.rotation.w = q[3]
+        
         self.tf_broadcaster.sendTransform(transform)
 
     def _publish_qr_posestamped(self, qr):
