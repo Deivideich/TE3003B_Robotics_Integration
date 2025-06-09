@@ -9,14 +9,14 @@ from cv_bridge import CvBridge
 import cv2
 import numpy as np
 from copy import deepcopy
-from puzzlebot_vision.qr_detector.QRDetector import QRDetector
+from puzzlebot_vision.qr_detector.QRDetector import QRDetector, QRDetectorTorch
 from geometry_msgs.msg import TransformStamped, Pose, PoseStamped
 import tf2_ros 
 from tf2_ros import TransformBroadcaster
 import tf2_geometry_msgs
 from scipy.spatial.transform import Rotation as R
-
-QR_THRESHOLD = 0.25  # Adjust this threshold based on your needs
+import time
+QR_THRESHOLD = 0.5  # Adjust this threshold based on your needs
 
 class QRDetectorNode(Node):
     def __init__(self):
@@ -157,7 +157,9 @@ class QRDetectorNode(Node):
 
     def process_frame(self, frame):
         # Detect QR codes
+        prev_time = time.time()
         self.detected_qrs = self.qr_detector.detect(frame)
+        print(f'Detected qrs in {time.time() - prev_time:.4f} seconds')
         self.valid_qrs = []
 
         # Draw QR codes on the image
