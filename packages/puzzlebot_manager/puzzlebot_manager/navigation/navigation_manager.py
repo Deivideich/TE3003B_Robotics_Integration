@@ -21,6 +21,12 @@ class NavigationManager():
             'controller_server',
         )
         
+        self.navigation_goal_debug_pub = self.node.create_publisher(
+            PoseStamped,
+            '/navigation/goal_debug',
+            10
+        )
+        
         self.current_exploration_goal = 0
         self.truck_locations = []
         self.truck_named_locations = {
@@ -130,12 +136,14 @@ class NavigationManager():
             goal_msg.no_plan = no_plan
             
             # Send goal asynchronous
+            self.navigation_goal_active = True
             self.node.get_logger().info("Waiting for server...")
             self.navigation_action_client.wait_for_server()
+            self.navigation_goal_debug_pub.publish(goal_msg.goal)  # Publish debug goal
             navigation_goal_future = self.navigation_action_client.send_goal_async(goal_msg)
             navigation_goal_future.add_done_callback(self.navigation_goal_callback)
             
-            self.navigation_goal_active = True
+            
             self.node.get_logger().info(f"Navigation goal sent")
             
             if wait:
@@ -159,6 +167,7 @@ class NavigationManager():
             
             # Send goal asynchronous
             self.navigation_action_client.wait_for_server()
+            self.navigation_goal_debug_pub.publish(goal_msg.goal)  # Publish debug goal
             navigation_goal_future = self.navigation_action_client.send_goal_async(goal_msg)
             navigation_goal_future.add_done_callback(self.navigation_goal_callback)
             
@@ -186,6 +195,24 @@ class NavigationManager():
             self.node.get_logger().info("Stopping ongoing exploration...")
             # Cancel the current exploration goal
             cancel_future = self.navigation_goal_handle.cancel_goal_async()
+            self.cancel_complete = False
+            cancel_future.add_done_callback(self.cancel_exploration_callback)
+            while not self.cancel_complete:
+                time.sleep(0.01)
             self.navigation_goal_active = False
             self.node.get_logger().info("Exploration stopped.")
         return False
+    
+    def cancel_exploration_callback(self, future):
+        self.cancel_complete = True
+        
+    def publish_goal_debug(self, goal: PoseStamped):
+        """
+        Publish a debug goal for visualization.
+        """
+        if self.mock_data:
+            self.node.get_logger().info("Mocking goal debug publishing...")
+            return
+        
+        self.node.get_logger().info(f"Publishing debug goal: {goal}")
+        self.navigation_goal_debug_pub.publish(goal)

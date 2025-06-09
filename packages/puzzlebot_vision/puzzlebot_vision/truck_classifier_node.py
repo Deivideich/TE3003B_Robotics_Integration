@@ -145,6 +145,8 @@ class TruckClassifierNode(Node):
             
             self.classification_pub.publish(classification_msg)
             
+            self.get_logger().info(f'Classified frame: ID={label_id}, Name={label_name}')
+            
             # Draw classification result on image
             text = f"ID: {label_id}"
             if label_name:

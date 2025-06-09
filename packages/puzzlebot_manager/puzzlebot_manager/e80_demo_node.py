@@ -51,16 +51,19 @@ class PuzzlebotManager(Node):
         
         # Truck locations (poses) are stored in a yaml received as a parameter
         package_path = get_package_share_directory('puzzlebot_manager')
-        truck_locations_file = f"{package_path}/config/truck_locations_sim.yaml"
+        truck_locations_file = f"{package_path}/config/truck_locations.yaml"
         truck_locations_filepath = self.declare_parameter('truck_locations_file',
                                                         truck_locations_file).value
-        exploration_goals_file = f"{package_path}/config/exploration_goals_sim.yaml"
+        exploration_goals_file = f"{package_path}/config/exploration_goals_rbrgs.yaml"
         exploration_goals_filepath = self.declare_parameter('exploration_goals_file',
                                                         exploration_goals_file).value
         self.navigation_manager.load_exploration_goals(exploration_goals_filepath)
         self.navigation_manager.load_truck_locations(truck_locations_filepath)
         
-        self.current_state = PuzzlebotState.IDENTIFY_TRUCKS                                                                                                                                 
+        ################ INITIAL STATE ################
+        self.current_state = PuzzlebotState.EXPLORING
+        ###############################################
+        
         self.target_truck_type = None # Default truck type
         self.objects_placed = 0  # Counter for placed objects
         self.qr_goal_index = 0  # Counter for placed objects
@@ -86,7 +89,6 @@ class PuzzlebotManager(Node):
         
         
     def state_machine_callback(self):
-        print("state machine callback")
         if self.current_state == PuzzlebotState.INITIALIZING:
             self.get_logger().info("PuzzlebotManager is initializing...")
             self.current_state = PuzzlebotState.IDENTIFY_TRUCKS
@@ -109,10 +111,11 @@ class PuzzlebotManager(Node):
         elif self.current_state == PuzzlebotState.EXPLORING:
             
             self.navigation_manager.explore()
-            
-            if len(self.vision_manager.get_qr_codes()) != 0:
+            self.qr_goal_poses = self.vision_manager.get_qr_poses(self.faking_qr_pose, wait=False)
+            if len(self.qr_goal_poses) != 0:
                 self.navigation_manager.stop_exploration()
-                self.qr_goal_poses = self.vision_manager.get_qr_poses(self.faking_qr_pose)
+                time.sleep(5)
+                self.get_logger().info(f"QR codes DETECTED!!! STOPPING")
                 self.current_state = PuzzlebotState.PICK
         
         elif self.current_state == PuzzlebotState.PICK:
@@ -122,9 +125,18 @@ class PuzzlebotManager(Node):
                 self.get_logger().info(f"There is no pre-pick and picking goal poses, current poses: {len(self.qr_goal_poses)}")
                 self.current_state = PuzzlebotState.ERROR
             else:
-                self.navigation_manager.send_navigation_goal(self.qr_goal_poses[0], wait = True, ignore_obstacles = False, no_plan = False) # Ensure pre pick position is achieved
+                # while True:
+                #     self.navigation_manager.publish_goal_debug(self.qr_goal_poses[0])
+                #     time.sleep(5)
+                #     self.navigation_manager.publish_goal_debug(self.qr_goal_poses[1])
+                #     time.sleep(5)
+                    
+                self.navigation_manager.send_navigation_goal(self.qr_goal_poses[0], wait = True, ignore_obstacles = False, no_plan = True) # Ensure pre pick position is achieved
+                self.get_logger().info("Pre-pick position reached, waiting for 5 seconds before picking...")
+                time.sleep(5)
                 self.navigation_manager.send_navigation_goal(self.qr_goal_poses[1], wait = True, ignore_obstacles = True, no_plan = True) # Grab pallet with forklift
-
+                self.get_logger().info("Picking position reached, waiting for 5 seconds before picking...")
+                time.sleep(5)
                 # For now, we will just simulate it
                 # Here the forklift should change state to lift
                 self.lift_manager.set_lifter_state(LifterState.MOVE_FORK_TO_TOP, wait=True)

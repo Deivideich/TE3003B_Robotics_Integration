@@ -11,7 +11,7 @@ import math
 import tf_transformations
 from tf2_geometry_msgs import do_transform_pose
 import tf2_ros
-
+import copy
 
 
 class VisionManager():
@@ -42,10 +42,14 @@ class VisionManager():
         self.mock_data = mock
         self.node.get_logger().info("Initializing Vision Manager...")
     
-    def get_qr_poses(self, fake_qr_pose):
-        self.get_qr_codes(wait=True)
-
-        self.node.get_logger().info(f"Getting poses for {len(self.qr_codes)} QRs")
+    def get_qr_poses(self, fake_qr_pose, wait=False):
+        self.get_qr_codes(wait=wait)
+        if len(self.qr_codes) == 0:
+            return []
+        
+        qr_codes = copy.deepcopy(self.qr_codes)
+        
+        self.node.get_logger().info(f"Getting poses for {qr_codes} QRs")
 
         # Get the robot's pose in the map frame using tf_buffer
         tf_buffer = self.node.tf_buffer
@@ -69,7 +73,7 @@ class VisionManager():
         min_distance = float('inf')
         closest_qr_code = None
 
-        for qr_code in self.qr_codes:
+        for qr_code in qr_codes:
             if (qr_code.pose_stamped.header.frame_id != "map"):
                 self.node.get_logger().info(f"Detected qr pose not in map frame, real frame: {qr_code.pose_stamped.header.frame_id}")
                 continue
@@ -84,15 +88,25 @@ class VisionManager():
         if closest_qr_code is None and not fake_qr_pose:
             return None
         
-        trans_offset_array = [0.05, -0.15]  # Offsets for pre_pick and pick
+        trans_offset_array = [0.25, 0.0]  # Offsets for pre_pick and pick
 
         goal_array = []
 
-        goal_pose_in_map = PoseStamped()
-        goal_pose_in_map.header.frame_id = "map"
-        goal_pose_in_map.header.stamp = self.node.get_clock().now().to_msg()
-    
+        
+
+        source_frame = f'qr_code_{closest_qr_code.content}' if not fake_qr_pose else 'base_link'
+        transform = tf_buffer.lookup_transform(
+            "map",  # target
+            source_frame,  # source
+            rclpy.time.Time(),
+            rclpy.duration.Duration(seconds=1.0)
+        )
+        
         for i in range(len(trans_offset_array)):
+            goal_pose_in_map = PoseStamped()
+            goal_pose_in_map.header.frame_id = "map"
+            goal_pose_in_map.header.stamp = self.node.get_clock().now().to_msg()
+            
             pose_qr = Pose()
             pose_qr.position.x = 0.0
             pose_qr.position.y = 0.0
@@ -107,20 +121,13 @@ class VisionManager():
             self.node.get_logger().info(f"Trying to get pose position.x: {pose_qr.position.x},  position.y: {pose_qr.position.y},  position.z: {pose_qr.position.z},  orientation.x: {pose_qr.orientation.x},  orientation.y: {pose_qr.orientation.y},  orientation.z: {pose_qr.orientation.z},  orientation.w: {pose_qr.orientation.w},")
 
             try:
-                source_frame = f'qr_code_{closest_qr_code.content}' if not fake_qr_pose else 'base_link'
-                transform = tf_buffer.lookup_transform(
-                    "map",  # target
-                    source_frame,  # source
-                    rclpy.time.Time(),
-                    rclpy.duration.Duration(seconds=1.0)
-                )
-                
                 goal_pose_in_map.pose = tf2_geometry_msgs.do_transform_pose(pose_qr, transform)
+                goal_array.append(goal_pose_in_map)
             except Exception as e:
                 self.node.get_logger().error(f"Failed to transform QR code pose: {e}")
                 continue
             
-            goal_array.append(goal_pose_in_map)
+            
 
 
         return goal_array
@@ -146,7 +153,7 @@ class VisionManager():
         self.qr_codes = msg.qrcodes
         self.available_qr_detection = len(self.qr_codes) > 0
         
-    def truck_classify(self, wait=False, timeout=3.0):
+    def truck_classify(self, wait=False, timeout=5.0):
         """
         Request truck classification from the vision system.
         """

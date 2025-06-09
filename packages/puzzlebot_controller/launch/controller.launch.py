@@ -36,7 +36,7 @@ def generate_launch_description():
             description="Desired linear speed for controller"
         ),
         DeclareLaunchArgument(
-            name="angular_speed", default_value="0.4",
+            name="angular_speed", default_value="0.3",
             description="Desired linear speed for controller"
         ),
         DeclareLaunchArgument(
@@ -60,7 +60,7 @@ def generate_launch_description():
             description="Derivative gain used in PID controller"
         ),
         DeclareLaunchArgument(
-            name="usingBugAlgorithm", default_value="true",
+            name="usingBugAlgorithm", default_value="false",
             description="Derivative gain used in PID controller"
         ),
         DeclareLaunchArgument(
@@ -76,7 +76,7 @@ def generate_launch_description():
             description="Scale used for theta distance in A*"
         ),
         DeclareLaunchArgument(
-            name="interpolation_steps", default_value="100",
+            name="interpolation_steps", default_value="50",
             description="Amount of interpolation between SE2States"
         ),
         DeclareLaunchArgument(
@@ -84,11 +84,11 @@ def generate_launch_description():
             description="Using real sampling on SE2States or the grid map for A* algorithm"
         ),
         DeclareLaunchArgument(
-            name="robot_width", default_value="0.25",
+            name="robot_width", default_value="0.2",
             description="Width used for basefootprint"
         ),
         DeclareLaunchArgument(
-            name="robot_height", default_value="0.25",
+            name="robot_height", default_value="0.2",
             description="Height used for basefootprint"
         ),
         

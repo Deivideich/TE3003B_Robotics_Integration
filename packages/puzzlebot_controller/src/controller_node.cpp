@@ -91,7 +91,7 @@ public:
     qos.durability(rclcpp::DurabilityPolicy::Volatile);
     qos.keep_last(1);
     tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
-    tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_, qos=qos);
+    tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
 
     planner_client_cb_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
     // timer_cb_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
@@ -332,7 +332,7 @@ private:
       result->success = true;
       goal_handle->succeed(result);
       controller_->resetIndex();
-      current_path_->empty();
+      current_path_.empty();
       return;
     }
 
@@ -359,11 +359,11 @@ private:
         const auto& goal_pose = *goal_pose_;
         const auto& current_pose = *current_pose_;
 
-        current_path_->empty();
+        current_path_.empty();
         controller_->resetIndex();
 
         if (no_plan_){
-          current_path_ = {goal_pose, current_pose};
+          current_path_ = {goal_pose};
           controller_state_ = GLOBAL_CONTROLLER;
         } else{
           auto request = std::make_shared<puzzlebot_interfaces::srv::PlanPath::Request>();

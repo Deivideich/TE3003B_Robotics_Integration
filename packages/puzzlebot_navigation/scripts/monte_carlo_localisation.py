@@ -81,7 +81,7 @@ class MCLNode(Node):
         self.ekf_tf_mutex = False 
 
         
-        qos = rclpy.qos.QoSProfile(depth=10)
+        qos = rclpy.qos.QoSProfile(depth=3)
         qos.reliability = rclpy.qos.QoSReliabilityPolicy.BEST_EFFORT
         
         

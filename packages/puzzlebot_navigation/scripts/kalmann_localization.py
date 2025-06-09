@@ -27,6 +27,8 @@ class KalmanNode(Node):
         self.aruco_diff_y = 99.0
         self.aruco_diff_angle = 99.0
         
+        self.tf_mutex = False
+        
         # create broadcast tf param
         self.declare_parameter('broadcast_tf', True)
         self.declare_parameter('mcl_aid', False)
