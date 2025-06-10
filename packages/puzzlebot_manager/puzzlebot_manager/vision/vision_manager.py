@@ -13,6 +13,11 @@ from tf2_geometry_msgs import do_transform_pose
 import tf2_ros
 import copy
 
+QR_TO_LABEL = {
+    "caja_oxidada": "gray_truck",
+    "patron_diagonal": "yellow_truck",
+    "luces_circulares": "red_truck",
+}
 
 class VisionManager():
     def __init__(self, node: Node, mock : bool = False):
@@ -45,7 +50,7 @@ class VisionManager():
     def get_qr_poses(self, fake_qr_pose, wait=False):
         self.get_qr_codes(wait=wait)
         if len(self.qr_codes) == 0:
-            return []
+            return [], ""
         
         qr_codes = copy.deepcopy(self.qr_codes)
         
@@ -67,7 +72,7 @@ class VisionManager():
             base_link_pose_in_map = tf2_geometry_msgs.do_transform_pose(base_link_pose.pose, transform)
         except Exception as e:
             self.node.get_logger().error(f"Failed to get base_link pose in map frame: {e}")
-            return None
+            return [], ""
 
         
         min_distance = float('inf')
@@ -86,9 +91,9 @@ class VisionManager():
                 closest_qr_code = qr_code
 
         if closest_qr_code is None and not fake_qr_pose:
-            return None
+            return [], ""
         
-        trans_offset_array = [0.25, 0.0]  # Offsets for pre_pick and pick
+        trans_offset_array = [0.35, 0.05]  # Offsets for pre_pick and pick
 
         goal_array = []
 
@@ -128,9 +133,7 @@ class VisionManager():
                 continue
             
             
-
-
-        return goal_array
+        return [goal_array, qr_codes[0].content]
 
     def get_qr_codes(self, wait = False, timeout=3.0):
         """
@@ -173,3 +176,13 @@ class VisionManager():
         """
         self.available_inference = True
         self.truck_classification = msg.label_name
+        
+    def qr_to_label(self, qr_content: str) -> str:
+        """
+        Convert QR code content to a label.
+        """
+        if qr_content in QR_TO_LABEL:
+            return QR_TO_LABEL[qr_content]
+        else:
+            self.node.get_logger().warn(f"Unknown QR content: {qr_content}")
+            return "unknown_truck"

@@ -154,7 +154,7 @@ class QRDetectorTorch:
         detected_qrs, detected = self.qreader.detect_and_decode(image=frame, return_detections=True)
         detected_codes = []
         for i, qr in enumerate(detected_qrs):
-            if (i > len(detected)): # qr == "" or qr is None or qr == "None" or 
+            if (i > len(detected)) or qr == "" or qr is None or qr == "None": 
                 continue
 
             x1, y1, x2, y2 = detected[i]["bbox_xyxy"]

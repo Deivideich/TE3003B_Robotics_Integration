@@ -113,7 +113,7 @@ class NavigationManager():
             self.node.get_logger().info(f"Sending navigation goal to truck {truck_index}...")
         
         elif truck_type in self.truck_named_locations:
-            goal = self.truck_locations[self.truck_named_locations[truck_type]]
+            goal = self.truck_named_locations[truck_type]
             self.node.get_logger().info(f"Sending navigation goal to truck type '{truck_type}'...")
         
         if goal is None:
@@ -156,7 +156,7 @@ class NavigationManager():
                 while self.navigation_goal_active:
                     time.sleep(0.1)  # Wait until the goal is completed
     
-    def cmd_navigation(self, is_forward: bool = True, speed: float = 0.05, duration: float = 3.0, wait: bool = False):
+    def cmd_navigation(self, is_forward: bool = True, speed: float = 0.075, duration: float = 3.0, wait: bool = False):
         """
         Command the robot to move forward or backward for a certain duration.
         """
