@@ -51,7 +51,7 @@ class PuzzlebotManager(Node):
         
         # Truck locations (poses) are stored in a yaml received as a parameter
         package_path = get_package_share_directory('puzzlebot_manager')
-        truck_locations_file = f"{package_path}/config/truck_locations.yaml"
+        truck_locations_file = f"{package_path}/config/truck_locations_rbrgs.yaml"
         truck_locations_filepath = self.declare_parameter('truck_locations_file',
                                                         truck_locations_file).value
         exploration_goals_file = f"{package_path}/config/exploration_goals_rbrgs.yaml"
@@ -68,9 +68,15 @@ class PuzzlebotManager(Node):
         self.objects_placed = 0  # Counter for placed objects
         self.qr_goal_index = 0  # Counter for placed objects
         self.faking_qr_pose = False
+        
+        self.qr_goal_poses = []  # List to store QR goal poses
+        self.qr_content = ""  # List to store QR content
 
         qos = rclpy.qos.QoSProfile(depth=10)
         qos.reliability = rclpy.qos.QoSReliabilityPolicy.BEST_EFFORT
+        
+        truck_location = self.navigation_manager.truck_locations[0]
+        self.navigation_manager.truck_named_locations["yellow_truck"] = truck_location
         
         #### TF HANDLERS ####
         self.tf_buffer = tf2_ros.Buffer()
@@ -101,6 +107,7 @@ class PuzzlebotManager(Node):
                 self.get_logger().info(f"Arrived at truck location {i}.")
                 time.sleep(5)
                 truck_label = self.vision_manager.truck_classify(wait=True)
+                truck_label = "yellow_truck"
                 self.navigation_manager.truck_named_locations[truck_label] = truck_location
                 self.get_logger().info(f"Truck {truck_label} identified at location {truck_location.pose.position.x}, {truck_location.pose.position.y}.")
                 
@@ -111,11 +118,11 @@ class PuzzlebotManager(Node):
         elif self.current_state == PuzzlebotState.EXPLORING:
             
             self.navigation_manager.explore()
-            self.qr_goal_poses = self.vision_manager.get_qr_poses(self.faking_qr_pose, wait=False)
+            self.qr_goal_poses, self.qr_content = self.vision_manager.get_qr_poses(self.faking_qr_pose, wait=False)
             if len(self.qr_goal_poses) != 0:
                 self.navigation_manager.stop_exploration()
-                time.sleep(5)
                 self.get_logger().info(f"QR codes DETECTED!!! STOPPING")
+                time.sleep(3)
                 self.current_state = PuzzlebotState.PICK
         
         elif self.current_state == PuzzlebotState.PICK:
@@ -133,10 +140,10 @@ class PuzzlebotManager(Node):
                     
                 self.navigation_manager.send_navigation_goal(self.qr_goal_poses[0], wait = True, ignore_obstacles = False, no_plan = True) # Ensure pre pick position is achieved
                 self.get_logger().info("Pre-pick position reached, waiting for 5 seconds before picking...")
-                time.sleep(5)
+                time.sleep(2)
                 self.navigation_manager.send_navigation_goal(self.qr_goal_poses[1], wait = True, ignore_obstacles = True, no_plan = True) # Grab pallet with forklift
                 self.get_logger().info("Picking position reached, waiting for 5 seconds before picking...")
-                time.sleep(5)
+                time.sleep(2)
                 # For now, we will just simulate it
                 # Here the forklift should change state to lift
                 self.lift_manager.set_lifter_state(LifterState.MOVE_FORK_TO_TOP, wait=True)
@@ -145,11 +152,24 @@ class PuzzlebotManager(Node):
                 
                 self.current_state = PuzzlebotState.PLACE
             self.qr_goal_poses = []
+            
+        
         elif self.current_state == PuzzlebotState.PLACE:
             self.get_logger().info("Placing the object in a truck...")
             # Here you would implement the logic to place an object in a truck
             # For now, we will just simulate it
-            time.sleep(2)
+            truck_label = self.vision_manager.qr_to_label(self.qr_content)
+            
+            self.go_to_truck_location = self.navigation_manager.go_to_truck_location(
+                truck_type=truck_label, wait=True)
+            truck_location = self.navigation_manager.truck_named_locations[truck_label]
+            
+            self.navigation_manager.cmd_navigation(is_forward=True, duration=2.0, wait=True)
+            self.lift_manager.set_lifter_state(LifterState.LEAVE_PALLET, wait=True)
+            time.sleep(3)
+            self.navigation_manager.cmd_navigation(is_forward=False, duration=2.0, wait=True)
+            self.lift_manager.set_lifter_state(LifterState.MOVE_FORK_TO_BOTTOM, wait=True)
+            time.sleep(3)
             
             self.objects_placed += 1
             self.get_logger().info(f"Object placed. Total objects placed: {self.objects_placed}")
