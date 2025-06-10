@@ -3,7 +3,7 @@ from rclpy.node import Node
 from rclpy.action import ActionClient
 import yaml
 import time
-from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import PoseStamped,Twist
 from puzzlebot_manager.utils.decorators import mockable
 from puzzlebot_interfaces.action import ControllerAction
 
@@ -24,6 +24,12 @@ class NavigationManager():
         self.navigation_goal_debug_pub = self.node.create_publisher(
             PoseStamped,
             '/navigation/goal_debug',
+            10
+        )
+
+        self.cmd_publisher = self.node.create_publisher(
+            Twist,
+            '/cmd_vel',
             10
         )
         
@@ -150,6 +156,37 @@ class NavigationManager():
                 while self.navigation_goal_active:
                     time.sleep(0.1)  # Wait until the goal is completed
     
+    def cmd_navigation(self, is_forward: bool = True, speed: float = 0.05, duration: float = 3.0, wait: bool = False):
+        """
+        Command the robot to move forward or backward for a certain duration.
+        """
+        if self.mock_data:
+            self.node.get_logger().info("Mocking cmd_navigation...")
+            return True
+
+        twist = Twist()
+        twist.linear.x = speed if is_forward else -speed
+        twist.angular.z = 0.0
+
+        self.node.get_logger().info(
+            f"Publishing cmd_vel: linear.x={twist.linear.x}, duration={duration}s"
+        )
+
+        start_time = time.time()
+        while time.time() - start_time < duration:
+            self.cmd_publisher.publish(twist)
+            if not wait:
+                break
+            time.sleep(0.1)
+
+        # Stop the robot after moving
+        stop_twist = Twist()
+        self.cmd_publisher.publish(stop_twist)
+        self.node.get_logger().info("cmd_navigation completed.")
+
+        return True
+
+
     def explore(self):
         if self.mock_data:
             self.node.get_logger().info("Mocking exploration...")
