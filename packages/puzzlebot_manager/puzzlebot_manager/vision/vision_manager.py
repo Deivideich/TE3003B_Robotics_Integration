@@ -93,7 +93,7 @@ class VisionManager():
         if closest_qr_code is None and not fake_qr_pose:
             return [], ""
         
-        trans_offset_array = [0.35, 0.05]  # Offsets for pre_pick and pick
+        trans_offset_array = [0.3, 0.05]  # Offsets for pre_pick and pick
 
         goal_array = []
 

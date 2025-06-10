@@ -13,7 +13,10 @@ from enum import Enum
 import yaml
 from ament_index_python.packages import get_package_share_directory
 import tf2_ros
-
+from puzzlebot_interfaces.srv import AudioRequest
+from std_msgs.msg import Int16
+from visualization_msgs.msg import MarkerArray, Marker
+import copy
 
 NUMBER_OF_OBJECTS = 3  # Number of objects to be placed in trucks
 # Mock modules for testing purposes
@@ -22,6 +25,7 @@ mock_modules = [
 
 # states for state machine
 class PuzzlebotState(Enum):
+    LISTENING = 90
     INITIALIZING = 0
     IDENTIFY_TRUCKS = 1
     EXPLORING = 2
@@ -40,6 +44,8 @@ class PuzzlebotManager(Node):
         super().__init__('puzzlebot_manager')
         self._default_callback_group = rclpy.callback_groups.ReentrantCallbackGroup()
         
+        self.declare_parameter('listen', True)
+        listen = self.get_parameter('listen').get_parameter_value().bool_value
         
         self.get_logger().info("Initializing PuzzlebotManager...")
         self.get_logger().info(f"Mock modules: {', '.join(mock_modules)}")
@@ -61,8 +67,16 @@ class PuzzlebotManager(Node):
         self.navigation_manager.load_truck_locations(truck_locations_filepath)
         
         ################ INITIAL STATE ################
-        self.current_state = PuzzlebotState.EXPLORING
+        if listen:
+            self.current_state = PuzzlebotState.LISTENING
+        else:
+            self.current_state = PuzzlebotState.INITIALIZING
         ###############################################
+        
+        # publish black circle markers over each truck location
+        self.marker_pub = self.create_publisher(MarkerArray, '/truck_locations_markers', 10)
+        self.marker_colors = [(0.0,0.0,0.0) for _ in range(len(self.navigation_manager.truck_locations))]
+        self.publish_markers()
         
         self.target_truck_type = None # Default truck type
         self.objects_placed = 0  # Counter for placed objects
@@ -77,6 +91,9 @@ class PuzzlebotManager(Node):
         
         truck_location = self.navigation_manager.truck_locations[1]
         self.navigation_manager.truck_named_locations["yellow_truck"] = truck_location
+        
+        truck_location = self.navigation_manager.truck_locations[2]
+        self.navigation_manager.truck_named_locations["red_truck"] = truck_location
         
         #### TF HANDLERS ####
         self.tf_buffer = tf2_ros.Buffer()
@@ -93,9 +110,19 @@ class PuzzlebotManager(Node):
         self.vision_manager = VisionManager(self, mock="vision" in mock_modules)
         self.lift_manager = LiftManager(self, mock="lift" in mock_modules)
         
+        self.audio_client = self.create_client(AudioRequest, '/audio_info')
+        
         
     def state_machine_callback(self):
-        if self.current_state == PuzzlebotState.INITIALIZING:
+        
+        if self.current_state == PuzzlebotState.LISTENING:
+            self.get_logger().info("PuzzlebotManager is listening for commands...")
+            # Here you would implement the logic to listen for commands
+            start = self.wait_for_start_signal(wait=True)
+            if start == "begin":
+                self.current_state = PuzzlebotState.INITIALIZING
+        
+        elif self.current_state == PuzzlebotState.INITIALIZING:
             self.get_logger().info("PuzzlebotManager is initializing...")
             self.current_state = PuzzlebotState.IDENTIFY_TRUCKS
             
@@ -105,17 +132,40 @@ class PuzzlebotManager(Node):
             for i, truck_location in enumerate(self.navigation_manager.truck_locations):
                 self.navigation_manager.go_to_truck_location(truck_index=i, wait=True)
                 self.get_logger().info(f"Arrived at truck location {i}.")
-                time.sleep(5)
+                time.sleep(2)
                 truck_label = self.vision_manager.truck_classify(wait=True)
-                truck_label = "yellow_truck"
+                # truck_label = "yellow_truck"
+                
+                if truck_label == "yellow_truck":
+                    marker_color = (1.0, 1.0, 0.0)  # Yellow
+                elif truck_label == "red_truck":
+                    marker_color = (1.0, 0.0, 0.0)
+                elif truck_label == "gray_truck":
+                    marker_color = (0.5, 0.5, 0.5)
+                else:
+                    marker_color = (0.0, 0.0, 0.0)
+                self.marker_colors[i] = marker_color
+                self.publish_markers()
+                
                 self.navigation_manager.truck_named_locations[truck_label] = truck_location
                 self.get_logger().info(f"Truck {truck_label} identified at location {truck_location.pose.position.x}, {truck_location.pose.position.y}.")
-                
+            
+            
+        
             self.get_logger().info("Trucks identified.")
             self.get_logger().info("Starting exploration...")
             self.current_state = PuzzlebotState.EXPLORING
         
         elif self.current_state == PuzzlebotState.EXPLORING:
+            
+            truck_location = self.navigation_manager.truck_locations[0]
+            self.navigation_manager.truck_named_locations["gray_truck"] = truck_location
+            
+            truck_location = self.navigation_manager.truck_locations[1]
+            self.navigation_manager.truck_named_locations["yellow_truck"] = truck_location
+            
+            truck_location = self.navigation_manager.truck_locations[2]
+            self.navigation_manager.truck_named_locations["red_truck"] = truck_location
             
             self.navigation_manager.explore()
             self.qr_goal_poses, self.qr_content = self.vision_manager.get_qr_poses(self.faking_qr_pose, wait=False)
@@ -127,7 +177,9 @@ class PuzzlebotManager(Node):
                 if len(qr_goal_poses) != 0:
                     self.qr_goal_poses = qr_goal_poses
                     self.qr_content = qr_content
+                    
                     self.get_logger().info(f"QR codes REDETECTED!!! {self.qr_content} at {self.qr_goal_poses}")
+                # self.qr_content = "luces_circulares"
                 self.current_state = PuzzlebotState.PICK
         
         elif self.current_state == PuzzlebotState.PICK:
@@ -172,9 +224,9 @@ class PuzzlebotManager(Node):
             self.navigation_manager.cmd_navigation(is_forward=True, speed=0.03, duration=10.0, wait=True)
             self.lift_manager.set_lifter_state(LifterState.LEAVE_PALLET, wait=True)
             time.sleep(3)
-            self.navigation_manager.cmd_navigation(is_forward=False, speed=0.03, duration=10.0, wait=True)
+            self.navigation_manager.cmd_navigation(is_forward=False, speed=0.03, duration=15.0, wait=True)
             self.lift_manager.set_lifter_state(LifterState.MOVE_FORK_TO_BOTTOM, wait=True)
-            time.sleep(3)
+            time.sleep(1)
             
             self.objects_placed += 1
             self.get_logger().info(f"Object placed. Total objects placed: {self.objects_placed}")
@@ -192,6 +244,76 @@ class PuzzlebotManager(Node):
             self.get_logger().error("An error occurred in the PuzzlebotManager state machine.")
             self.current_state = PuzzlebotState.INITIALIZING
             
+            
+    def wait_for_start_signal(self, wait=True):
+        """
+        Wait for a start signal to begin the state machine.
+        This is a placeholder for actual start signal logic.
+        """
+        self.audio_client.wait_for_service(timeout_sec=5.0)
+        if not self.audio_client.service_is_ready():
+            self.get_logger().error("Audio service is not available, cannot start.")
+            return ""
+        request = AudioRequest.Request()
+        request.duration = Int16()  # Duration is not used for start signal
+        request.duration.data = 3
+        self.get_logger().info("Listening for \"begin\" signal...")
+        future = self.audio_client.call_async(request)
+        self.audio_response = None
+        future.add_done_callback(self.start_signal_callback)
+        while wait and not self.audio_response:
+            time.sleep(0.01)
+            
+        if self.audio_response:
+            self.get_logger().info(f"Received start signal: {self.audio_response.prediction.data}")
+            return self.audio_response.prediction.data
+        else:
+            self.get_logger().warn("No start signal received, continuing...")
+            return ""
+        
+    def start_signal_callback(self, future):
+        """
+        Callback function to handle the response from the audio service.
+        """
+        try:
+            self.audio_response = future.result()
+        except Exception as e:
+            self.get_logger().error(f"Failed to get start signal: {e}")
+            self.audio_response = None
+            
+    def publish_markers(self):
+        """
+        Publish black circle markers over each truck location.
+        """
+        marker_array = MarkerArray()
+        for i, truck_location in enumerate(self.navigation_manager.truck_locations):
+            marker = Marker()
+            marker.header.frame_id = 'map'
+            marker.header.stamp = self.get_clock().now().to_msg()
+            marker.ns = 'truck_locations'
+            marker.id = i
+            marker.type = Marker.CYLINDER
+            marker.action = Marker.ADD
+            marker.pose = copy.deepcopy(truck_location.pose)
+            marker.scale.x = 0.5
+            marker.scale.y = 0.5
+            marker.scale.z = 0.1
+            marker.color.r = self.marker_colors[i][0]
+            marker.color.g = self.marker_colors[i][1]
+            marker.color.b = self.marker_colors[i][2]
+            marker.color.a = 1.0
+            marker.lifetime = rclpy.duration.Duration(seconds=0.0).to_msg()
+            marker.pose.position.z = 0.1
+            marker.pose.position.x = 2.5
+            marker.pose.orientation.w = 1.0
+            marker.pose.orientation.x = 0.0
+            marker.pose.orientation.y = 0.0
+            marker.pose.orientation.z = 0.0
+            
+            marker_array.markers.append(marker)
+        
+        self.marker_pub.publish(marker_array)
+        
 def main(args=None):
     rclpy.init(args=args)
     executor = rclpy.executors.MultiThreadedExecutor(8)

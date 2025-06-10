@@ -93,8 +93,8 @@ class AStarPlannerServer : public rclcpp::Node
 
         void declare_parameters(){
             this->declare_parameter("theta_resolution", M_PI / 8);
-            this->declare_parameter("translational_weight", 0.5f);
-            this->declare_parameter("rotational_weight", 0.5f);
+            this->declare_parameter("translational_weight", 0.1f);
+            this->declare_parameter("rotational_weight", 0.9f);
             this->declare_parameter("interpolation_steps", 10);
             this->declare_parameter("using_real_sampling", false);
             this->declare_parameter("robot_width", 0.2f);

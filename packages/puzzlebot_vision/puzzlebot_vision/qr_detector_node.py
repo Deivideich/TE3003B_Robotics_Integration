@@ -16,7 +16,7 @@ from tf2_ros import TransformBroadcaster
 import tf2_geometry_msgs
 from scipy.spatial.transform import Rotation as R
 import time
-QR_THRESHOLD = 0.5  # Adjust this threshold based on your needs
+QR_THRESHOLD = 0.55  # Adjust this threshold based on your needs
 
 class QRDetectorNode(Node):
     def __init__(self):

@@ -64,7 +64,7 @@ class LifterStateManager(Node):
             #First check if the bottom sensor is triggered when moving down
             if sensor_down and direction == LifterDirection.MOVE_DOWN:
                 self.get_logger().info("Bottom sensor triggered")
-                self.lifter.timed_move(direction, 3.0)
+                self.lifter.timed_move(direction, 5.0)
                 self.get_logger().info("Moving down completed, stopped.")
                 self.completed = True
                 break
