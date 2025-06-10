@@ -36,7 +36,7 @@ def generate_launch_description():
             description="Desired linear speed for controller"
         ),
         DeclareLaunchArgument(
-            name="angular_speed", default_value="0.3",
+            name="angular_speed", default_value="0.4",
             description="Desired linear speed for controller"
         ),
         DeclareLaunchArgument(
@@ -60,7 +60,7 @@ def generate_launch_description():
             description="Derivative gain used in PID controller"
         ),
         DeclareLaunchArgument(
-            name="usingBugAlgorithm", default_value="false",
+            name="usingBugAlgorithm", default_value="true",
             description="Derivative gain used in PID controller"
         ),
         DeclareLaunchArgument(
@@ -76,7 +76,7 @@ def generate_launch_description():
             description="Scale used for theta distance in A*"
         ),
         DeclareLaunchArgument(
-            name="interpolation_steps", default_value="50",
+            name="interpolation_steps", default_value="100",
             description="Amount of interpolation between SE2States"
         ),
         DeclareLaunchArgument(
@@ -84,28 +84,18 @@ def generate_launch_description():
             description="Using real sampling on SE2States or the grid map for A* algorithm"
         ),
         DeclareLaunchArgument(
-            name="robot_width", default_value="0.2",
+            name="robot_radius", default_value="0.15",
             description="Width used for basefootprint"
-        ),
-        DeclareLaunchArgument(
-            name="robot_height", default_value="0.2",
-            description="Height used for basefootprint"
         ),
         
     
         # State publisher
         Node(
             package="puzzlebot_planning",
-            executable="astar_planner_server",
-            name="astar_planner_server",
+            executable="ompl_planner_server",
+            name="ompl_planner_server",
             parameters=[{
-                "theta_resolution" : LaunchConfiguration("theta_resolution"),
-                "translational_weight" : LaunchConfiguration("translational_weight"),
-                "rotational_weight" : LaunchConfiguration("rotational_weight"),
-                "interpolation_steps" : LaunchConfiguration("interpolation_steps"),
-                "using_real_sampling" : LaunchConfiguration("using_real_sampling"),
-                "robot_width" : LaunchConfiguration("robot_width"),
-                "robot_height" : LaunchConfiguration("robot_height"),
+                "robot_radius" : LaunchConfiguration("robot_radius"),
             }],
             output="screen"
         ),

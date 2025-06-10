@@ -52,7 +52,7 @@ public:
   ControllerNode() : Node("controller_node") {
     // Declare params
     controller_type_ = this->declare_parameter<std::string>("controller_type", "pure_pursuit");
-    usingBugAlgorithm_ = this->declare_parameter<bool>("usingBugAlgorithm", true);
+    usingBugAlgorithm_ = this->declare_parameter<bool>("usingBugAlgorithm", false);
     usingMCLPose_ = this->declare_parameter<bool>("usingMCLPose", true);
     delta_angle_ = this->declare_parameter<float>("delta_angle", float(M_PI / 32));
     deviation_threshold_ = this->declare_parameter<float>("deviation_threshold", 0.75);
@@ -86,6 +86,10 @@ public:
     get_parameters();
 
 
+    auto qos = rclcpp::QoS(rclcpp::SensorDataQoS());
+    qos.reliability(rclcpp::ReliabilityPolicy::BestEffort);
+    qos.durability(rclcpp::DurabilityPolicy::Volatile);
+    qos.keep_last(1);
     tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
     tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
 
@@ -119,10 +123,10 @@ public:
     planner_client_ = this->create_client<puzzlebot_interfaces::srv::PlanPath>("plan_path", rmw_qos_profile_services_default, planner_client_cb_group_);
     // bug_planner_client_ = this->create_client<puzzlebot_interfaces::srv::PlanPath>("bug_plan_path", rmw_qos_profile_services_default, planner_client_cb_group_);
 
-    curr_pose_listener_ = this->create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>(pose_topics[usingMCLPose_], 10, std::bind(&ControllerNode::poseCallback, this, _1)); 
+    curr_pose_listener_ = this->create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>(pose_topics[usingMCLPose_], qos, std::bind(&ControllerNode::poseCallback, this, _1)); 
     // goal_listener_ = this->create_subscription<geometry_msgs::msg::PoseStamped>("/goal_pose", 10, std::bind(&ControllerNode::goalCallback, this, _1)); 
-    local_map_listener_ = this->create_subscription<nav_msgs::msg::OccupancyGrid>("/local_map", 10, std::bind(&ControllerNode::localMapCallback, this, _1));
-    merged_map_listener_ = this->create_subscription<nav_msgs::msg::OccupancyGrid>("/merged_map", 10, std::bind(&ControllerNode::mergedMapCallback, this, _1));
+    local_map_listener_ = this->create_subscription<nav_msgs::msg::OccupancyGrid>("/local_map", qos, std::bind(&ControllerNode::localMapCallback, this, _1));
+    merged_map_listener_ = this->create_subscription<nav_msgs::msg::OccupancyGrid>("/merged_map", qos, std::bind(&ControllerNode::mergedMapCallback, this, _1));
     cmd_pub_ = this->create_publisher<geometry_msgs::msg::Twist>("/cmd_vel", 10);
     control_state_pub_ = this->create_publisher<std_msgs::msg::String>("/controller_state", 10);
     control_point_pub_ = this->create_publisher<geometry_msgs::msg::PoseStamped>("/control_point", 10);
@@ -141,6 +145,7 @@ private:
   {
     RCLCPP_INFO(this->get_logger(), "Received goal request");
     ignore_obstacles_ = goal->ignore_obstacles;
+    no_plan_ = goal->no_plan;
     return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
   }
 
@@ -203,7 +208,7 @@ private:
       }
       tf_buffer_->transform(*pose, result, target_frame, tf2::durationFromSec(1));
     } catch (const tf2::TransformException& ex) {
-      RCLCPP_WARN(this->get_logger(), "Transform failed: %s", ex.what());
+      RCLCPP_WARN(this->get_logger(), "Transform failed on node: %s", ex.what());
     }
     return result;
   }                      
@@ -326,6 +331,8 @@ private:
       auto result = std::make_shared<ControllerAction::Result>();
       result->success = true;
       goal_handle->succeed(result);
+      controller_->resetIndex();
+      current_path_.empty();
       return;
     }
 
@@ -351,27 +358,34 @@ private:
       {
         const auto& goal_pose = *goal_pose_;
         const auto& current_pose = *current_pose_;
-        
-        auto request = std::make_shared<puzzlebot_interfaces::srv::PlanPath::Request>();
-        request->start = current_pose;
-        request->goal = goal_pose;
 
-        auto future_result = planner_client_->async_send_request(request);
-        // Set up a callback for when the future is complete
-        while (future_result.wait_for(100ms) != std::future_status::ready);
-
-        auto response = future_result.get();
-
-        if (response->result){
-          current_path_ = response->path;
-          controller_state_ = GLOBAL_CONTROLLER;
-          RCLCPP_INFO(this->get_logger(), "Succesfully found a path");
-        } else {
-          RCLCPP_WARN(this->get_logger(), "Could not find a path");
-          goal_pose_ = nullptr;
-          controller_state_ = STOPPED;
-        }
+        current_path_.empty();
         controller_->resetIndex();
+
+        if (no_plan_){
+          current_path_ = {goal_pose};
+          controller_state_ = GLOBAL_CONTROLLER;
+        } else{
+          auto request = std::make_shared<puzzlebot_interfaces::srv::PlanPath::Request>();
+          request->start = current_pose;
+          request->goal = goal_pose;
+
+          auto future_result = planner_client_->async_send_request(request);
+          // Set up a callback for when the future is complete
+          while (future_result.wait_for(100ms) != std::future_status::ready);
+
+          auto response = future_result.get();
+
+          if (response->result){
+            current_path_ = response->path;
+            controller_state_ = GLOBAL_CONTROLLER;
+            RCLCPP_INFO(this->get_logger(), "Succesfully found a path");
+          } else {
+            RCLCPP_WARN(this->get_logger(), "Could not find a path");
+            goal_pose_ = nullptr;
+            controller_state_ = STOPPED;
+          }
+        }
       }
         break;
       case ControllerStates::GLOBAL_CONTROLLER:
@@ -479,6 +493,7 @@ private:
   
   ControllerStates controller_state_ = STOPPED;
   bool ignore_obstacles_ = false;  // If true, the controller will ignore obstacles
+  bool no_plan_ = false;
 };
 
 int main(int argc, char **argv) {

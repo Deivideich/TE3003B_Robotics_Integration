@@ -104,6 +104,7 @@ def generate_launch_description():
         ),
 
         Node(
+            condition=IfCondition(LaunchConfiguration("use_ekf")),
             package="puzzlebot_navigation",
             executable="kalmann_localization.py",
             name="kalmann_localization",

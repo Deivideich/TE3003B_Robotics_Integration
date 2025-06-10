@@ -20,6 +20,7 @@ class LocalMapPublisher(Node):
         self.declare_parameter('map_height', 1.0)
         self.declare_parameter('map_resolution', 0.05)
         self.declare_parameter('sim', False)  # True for simulation, False for real robot
+        self.declare_parameter('mark_qr_objects', False)
 
         # Object drawing parameters
         self.declare_parameter('object_width', 0.2)  # in meters
@@ -28,6 +29,7 @@ class LocalMapPublisher(Node):
         self.map_width = self.get_parameter('map_width').value
         self.map_height = self.get_parameter('map_height').value
         self.map_resolution = self.get_parameter('map_resolution').value
+        self.mark_qr_objects = self.get_parameter('mark_qr_objects').value
         self.object_width = self.get_parameter('object_width').value
         self.object_height = self.get_parameter('object_height').value
         self.sim = self.get_parameter('sim').get_parameter_value().bool_value
@@ -97,7 +99,7 @@ class LocalMapPublisher(Node):
 
         # Draw QR object if available
         modified_ranges = msg.ranges
-        if self.latest_qr_pose is not None:
+        if self.latest_qr_pose is not None and self.mark_qr_objects:
             x = self.latest_qr_pose.pose.position.x
             y = self.latest_qr_pose.pose.position.y
 

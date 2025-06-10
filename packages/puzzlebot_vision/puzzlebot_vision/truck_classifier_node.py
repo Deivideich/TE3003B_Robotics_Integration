@@ -45,7 +45,7 @@ class TruckClassifierNode(Node):
             return
 
         # State for continuous inference
-        self.inference_active = False
+        self.inference_active = True
 
         # Always create the service
         self.classify_service = self.create_service(
@@ -144,6 +144,8 @@ class TruckClassifierNode(Node):
             classification_msg.confidence = 0.0  # Add confidence calculation if needed
             
             self.classification_pub.publish(classification_msg)
+            
+            self.get_logger().info(f'Classified frame: ID={label_id}, Name={label_name}')
             
             # Draw classification result on image
             text = f"ID: {label_id}"
