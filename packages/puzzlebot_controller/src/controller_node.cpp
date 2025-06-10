@@ -52,7 +52,7 @@ public:
   ControllerNode() : Node("controller_node") {
     // Declare params
     controller_type_ = this->declare_parameter<std::string>("controller_type", "pure_pursuit");
-    usingBugAlgorithm_ = this->declare_parameter<bool>("usingBugAlgorithm", true);
+    usingBugAlgorithm_ = this->declare_parameter<bool>("usingBugAlgorithm", false);
     usingMCLPose_ = this->declare_parameter<bool>("usingMCLPose", true);
     delta_angle_ = this->declare_parameter<float>("delta_angle", float(M_PI / 32));
     deviation_threshold_ = this->declare_parameter<float>("deviation_threshold", 0.75);

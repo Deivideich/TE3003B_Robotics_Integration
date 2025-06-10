@@ -29,6 +29,11 @@ class LiftManager():
         """
         Set the state of the lifter.
         """
+        if self.mock_data:
+            self.node.get_logger().info(f"Mocking lifter state change to {state.name}")
+            time.sleep(5)
+            
+            
         if not self.lifter_client.wait_for_service(timeout_sec=5.0):
             self.node.get_logger().error("Lifter service not available!")
             return False
