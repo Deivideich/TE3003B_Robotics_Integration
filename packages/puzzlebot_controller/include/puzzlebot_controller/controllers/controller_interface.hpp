@@ -3,7 +3,9 @@
 
 #include <geometry_msgs/msg/twist.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
+#include <tf2_ros/buffer.h>
 #include <vector>
+#include <cmath>
 
 namespace puzzlebot_controllers 
 {
@@ -12,8 +14,17 @@ namespace puzzlebot_controllers
         class ControllerInterface {
             public:
                 double linear_speed_;
+                double angular_speed_;
                 int path_index_ = 0;
-                ControllerInterface(double linear_speed) { linear_speed_ = linear_speed; }
+                tf2_ros::Buffer* tf_buffer_;  // pointer, not owned
+
+                ControllerInterface(double linear_speed, double angular_speed, 
+                                    tf2_ros::Buffer* tf_buffer)
+                : tf_buffer_(tf_buffer)
+                { 
+                    linear_speed_ = linear_speed; 
+                    angular_speed_ = angular_speed;
+                }
 
                 virtual ~ControllerInterface() = default;
                 

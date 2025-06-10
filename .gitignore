@@ -11,3 +11,13 @@ __pycache__/
 *.mod
 *.sum
 *.stamp
+*.zip
+logged_data/
+*.pyc
+*.jpg
+*.pt
+*.pth
+*events.out.tf*
+*truck_*.son
+*.zip
+logged_data/

@@ -22,6 +22,7 @@
   <depend>nav_msgs</depend>
   <depend>sensor_msgs</depend>
   <depend>puzzlebot_interfaces</depend>
+  <depend>puzzlebot_description</depend>
 
   <export>
     <build_type>ament_cmake</build_type>

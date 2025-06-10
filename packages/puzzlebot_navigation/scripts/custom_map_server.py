@@ -14,7 +14,7 @@ class SimpleMapServer(Node):
         
         super().__init__('simple_map_server')
         package_share_dir = get_package_share_directory('puzzlebot_navigation')
-        default_map_path = os.path.join(package_share_dir, 'maps', 'map_fixed.yaml')
+        default_map_path = os.path.join(package_share_dir, 'maps', 'map_new.yaml')
         self.declare_parameter('map_yaml_file', default_map_path)
 
         # Declare and get the map YAML path

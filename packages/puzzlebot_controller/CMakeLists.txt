@@ -11,15 +11,17 @@ find_package(rclcpp REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(puzzlebot_interfaces REQUIRED)
 find_package(nav_msgs REQUIRED)
+find_package(std_msgs REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
+find_package(angles REQUIRED)
 
 # Add model library
 add_library(puzzlebot_controller_include SHARED
     src/include/pure_pursuit.cpp
     src/include/pid_controller.cpp
-    src/include/bug2_controller.cpp
+    src/include/bug0_controller.cpp
 )
 target_include_directories(puzzlebot_controller_include PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -29,7 +31,9 @@ ament_target_dependencies(puzzlebot_controller_include PUBLIC
     nav_msgs
     geometry_msgs
     tf2
+    tf2_ros
     tf2_geometry_msgs
+    angles
     # Add dependencies like rclcpp if model needs ROS types directly
 )
 
@@ -37,6 +41,7 @@ add_executable(controller_node src/controller_node.cpp)
 ament_target_dependencies(controller_node PUBLIC
     rclcpp
     nav_msgs
+    std_msgs
     geometry_msgs
     tf2
     puzzlebot_interfaces
@@ -52,6 +57,21 @@ install(
     TARGETS controller_node
     DESTINATION lib/${PROJECT_NAME}
 )
+
+add_executable(controller_client src/controller_client.cpp)
+
+ament_target_dependencies(controller_client
+  rclcpp
+  rclcpp_action
+  geometry_msgs
+  puzzlebot_interfaces
+)
+
+install(TARGETS
+  controller_client
+  DESTINATION lib/${PROJECT_NAME}
+)
+
 
 # Install headers
 install(

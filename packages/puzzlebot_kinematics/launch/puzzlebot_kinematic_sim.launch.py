@@ -25,6 +25,7 @@ def generate_launch_description():
 
     # Declare launch arguments
     args = []
+
     args.append(
         launch.actions.DeclareLaunchArgument(
             name="model",

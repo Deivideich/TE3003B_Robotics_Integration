@@ -97,8 +97,8 @@ class AStarPlannerServer : public rclcpp::Node
             this->declare_parameter("rotational_weight", 0.5f);
             this->declare_parameter("interpolation_steps", 100);
             this->declare_parameter("using_real_sampling", false);
-            this->declare_parameter("robot_width", 0.4f);
-            this->declare_parameter("robot_height", 0.4f);
+            this->declare_parameter("robot_width", 0.2f);
+            this->declare_parameter("robot_height", 0.2f);
         }
 
         void initialize_parameters(){
@@ -109,6 +109,7 @@ class AStarPlannerServer : public rclcpp::Node
             this->get_parameter("using_real_sampling", using_real_sampling_);
             this->get_parameter("robot_width", robot_width_);
             this->get_parameter("robot_height", robot_height_);
+
         }
 
         void planPathCallback(const std::shared_ptr<puzzlebot_interfaces::srv::PlanPath::Request> request,
@@ -147,7 +148,7 @@ class AStarPlannerServer : public rclcpp::Node
             }
 
             // Find the path
-            bool result = astar_planner_->findPath();
+            bool result = astar_planner_->plan();
 
             if (result) {
                 // Get the trajectory

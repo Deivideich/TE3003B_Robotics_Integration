@@ -5,6 +5,7 @@
 #include "puzzlebot_planning/model/trajectory.hpp"
 #include "puzzlebot_planning/model/se2_state.hpp"
 #include "puzzlebot_planning/model/state.hpp"
+#include "puzzlebot_planning/planners/planner.hpp"
 #include <vector>
 #include <cmath> // For std::sqrt, std::pow
 #include <memory>
@@ -45,7 +46,7 @@ namespace puzzlebot_planning::planners
     /**
      * @brief A* pathfinding algorithm for 2D grid maps.
      */
-    class AStarPlanner
+    class AStarPlanner : public Planner
     {
     private:
         std::vector<std::vector<int>> grid_; // 2D grid map (0 for free space, 1 for obstacle) // AFTER SAMPLING WONT BE NEEDED
@@ -104,7 +105,7 @@ namespace puzzlebot_planning::planners
          * @brief Find the shortest path from start to goal using A* algorithm.
          * @return A vector of states representing the path.
          */
-        bool findPath();
+        bool plan() override;
 
         /**
          * @brief Angle diff between states.
@@ -121,11 +122,11 @@ namespace puzzlebot_planning::planners
         void buildTrajectory(Node* current_node);
         
         // Getters
-        StatePtr getStart() const { return start_; }
+        TrajectoryPtr getTrajectory() const override { return trajectory_; }
+        StatePtr getStart() const override { return start_; }
+        StatePtr getGoal() const override { return goal_; }
         Node* getCurrentNode() const { return current_; }
-        StatePtr getGoal() const { return goal_; }
         Grid getGrid() const { return grid_; }
-        TrajectoryPtr getTrajectory() const { return trajectory_; }
         bool isUsingRealSampling() const { return using_real_sampling_; }
         float getMapResolution() const { return map_resolution_; }
         std::pair<float,float> getMapOrigin() const { return std::make_pair(map_origin_x_, map_origin_y_); }
@@ -135,9 +136,9 @@ namespace puzzlebot_planning::planners
         
 
         // Setters
-        void setStart(const SE2StatePtr& start) { start_ = start; }
+        void setStart(const StatePtr& start) override { start_ = std::dynamic_pointer_cast<SE2State>(start); }
+        void setGoal(const StatePtr& goal) override { goal_ = std::dynamic_pointer_cast<SE2State>(goal); }
         void setCurrentNode(Node* current) { current_ = current; }
-        void setGoal(const SE2StatePtr& goal) { goal_ = goal; }
         void setGrid(const Grid& grid) { grid_ = grid; }
         void setTrajectory(const TrajectoryPtr& trajectory) { trajectory_ = trajectory; }
         void setUsingRealSampling(bool using_real_sampling) { using_real_sampling_ = using_real_sampling; }

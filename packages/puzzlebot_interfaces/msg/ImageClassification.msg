@@ -1,0 +1,3 @@
+int32 label_id
+string label_name
+float32 confidence
