@@ -51,10 +51,10 @@ class PuzzlebotManager(Node):
         
         # Truck locations (poses) are stored in a yaml received as a parameter
         package_path = get_package_share_directory('puzzlebot_manager')
-        truck_locations_file = f"{package_path}/config/truck_locations_rbrgs.yaml"
+        truck_locations_file = f"{package_path}/config/truck_locations.yaml"
         truck_locations_filepath = self.declare_parameter('truck_locations_file',
                                                         truck_locations_file).value
-        exploration_goals_file = f"{package_path}/config/exploration_goals_rbrgs.yaml"
+        exploration_goals_file = f"{package_path}/config/exploration_goals.yaml"
         exploration_goals_filepath = self.declare_parameter('exploration_goals_file',
                                                         exploration_goals_file).value
         self.navigation_manager.load_exploration_goals(exploration_goals_filepath)
@@ -75,7 +75,7 @@ class PuzzlebotManager(Node):
         qos = rclpy.qos.QoSProfile(depth=10)
         qos.reliability = rclpy.qos.QoSReliabilityPolicy.BEST_EFFORT
         
-        truck_location = self.navigation_manager.truck_locations[0]
+        truck_location = self.navigation_manager.truck_locations[1]
         self.navigation_manager.truck_named_locations["yellow_truck"] = truck_location
         
         #### TF HANDLERS ####
@@ -123,6 +123,11 @@ class PuzzlebotManager(Node):
                 self.navigation_manager.stop_exploration()
                 self.get_logger().info(f"QR codes DETECTED!!! STOPPING")
                 time.sleep(3)
+                qr_goal_poses, qr_content = self.vision_manager.get_qr_poses(self.faking_qr_pose, wait=True)
+                if len(qr_goal_poses) != 0:
+                    self.qr_goal_poses = qr_goal_poses
+                    self.qr_content = qr_content
+                    self.get_logger().info(f"QR codes REDETECTED!!! {self.qr_content} at {self.qr_goal_poses}")
                 self.current_state = PuzzlebotState.PICK
         
         elif self.current_state == PuzzlebotState.PICK:
@@ -164,10 +169,10 @@ class PuzzlebotManager(Node):
                 truck_type=truck_label, wait=True)
             truck_location = self.navigation_manager.truck_named_locations[truck_label]
             
-            self.navigation_manager.cmd_navigation(is_forward=True, duration=2.0, wait=True)
+            self.navigation_manager.cmd_navigation(is_forward=True, speed=0.03, duration=10.0, wait=True)
             self.lift_manager.set_lifter_state(LifterState.LEAVE_PALLET, wait=True)
             time.sleep(3)
-            self.navigation_manager.cmd_navigation(is_forward=False, duration=2.0, wait=True)
+            self.navigation_manager.cmd_navigation(is_forward=False, speed=0.03, duration=10.0, wait=True)
             self.lift_manager.set_lifter_state(LifterState.MOVE_FORK_TO_BOTTOM, wait=True)
             time.sleep(3)
             

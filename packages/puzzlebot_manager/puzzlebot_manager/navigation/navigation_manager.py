@@ -120,7 +120,7 @@ class NavigationManager():
             self.node.get_logger().error(f"Invalid truck index or type: {truck_index}, {truck_type}")
             return False
         # Send goal asynchronous
-        self.send_navigation_goal(goal, wait)
+        self.send_navigation_goal(goal, wait, ignore_obstacles=True, no_plan=False)
         
         return True
     
