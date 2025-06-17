@@ -1,0 +1,20 @@
+#include "puzzlebot_controller/controllers/pid_controller.hpp"
+
+namespace puzzlebot_controllers 
+{
+    namespace controllers 
+    {
+        PIDController::PIDController(double linear_speed, double angular_speed, double kP, double kD, double kI, tf2_ros::Buffer* tf_buffer) :
+        kP_(kP), kD_(kD), kI_(kI), ControllerInterface(linear_speed, angular_speed, tf_buffer) {} 
+                            
+
+        bool PIDController::computeCommand(
+            const geometry_msgs::msg::PoseStamped& current_pose,
+            const std::vector<geometry_msgs::msg::PoseStamped>& path,
+            geometry_msgs::msg::Twist::SharedPtr cmd) 
+        {
+            return false;
+        }
+    }
+}
+

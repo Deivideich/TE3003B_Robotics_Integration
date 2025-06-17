@@ -1,0 +1,7 @@
+geometry_msgs/PoseStamped goal
+bool ignore_obstacles
+bool no_plan
+---
+bool success
+---
+string controller_state

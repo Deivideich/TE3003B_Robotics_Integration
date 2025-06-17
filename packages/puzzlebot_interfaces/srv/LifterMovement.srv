@@ -1,0 +1,10 @@
+#Lifter movement service file
+#States:
+#0: Move the fork to bottom
+#1: Move the fork to top
+#2: Move the fork to middle
+#3: Leave the pallet
+#4: Stop the lifter
+int32 state
+---
+bool reached

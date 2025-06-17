@@ -1,0 +1,17 @@
+log/
+build/
+install/
+.vscode/
+*.o
+*.so
+*.exe
+*.zip
+logged_data/
+*.pyc
+*.jpg
+*.pt
+*.pth
+*events.out.tf*
+*truck_*.json
+*.zip
+logged_data/

@@ -1,0 +1,590 @@
+#!/usr/bin/env python3
+import math
+import numpy as np
+import ctypes
+from time import time
+
+import rclpy
+from rclpy.node import Node
+from nav_msgs.msg import OccupancyGrid, Odometry
+from std_msgs.msg import Bool
+from sensor_msgs.msg import LaserScan
+from geometry_msgs.msg import Pose, PoseWithCovarianceStamped, TransformStamped, PoseArray, PoseStamped
+import tf2_ros
+from tf2_ros import TransformBroadcaster
+import tf_transformations
+
+import os
+import ament_index_python.packages
+
+package_prefix = ament_index_python.packages.get_package_prefix('puzzlebot_navigation')
+cpp_mcl = os.path.join(package_prefix, 'lib', 'puzzlebot_navigation', 'libmcl_utils.so')
+
+ARGS = {
+    'useClustering': False,
+    'numParticles': 300,
+    'scanStep' : 5,
+    'minClusterDistance': 0.5,
+    'clusterEps': 0.5,
+    'clusterMinSamples': 0.05,
+    'scaleRdParticles': 0.0,
+    'minDistance': 0.005,
+    'minAngle': 5.0,
+    'repropagateCountNeeded': 1,
+    'HZ' : 20.0,
+    'sim': False,
+    'broadcast_tf' : True,
+    'use_ekf' : False,
+}
+class MCLNode(Node):
+    def __init__(self):
+        super().__init__('mcl_node')
+        self.mcl_cpp = ctypes.CDLL(cpp_mcl)
+        
+        self.declare_parameter('useClustering', ARGS['useClustering'])
+        self.declare_parameter('numParticles', ARGS['numParticles'])
+        self.declare_parameter('scanStep', ARGS['scanStep'])
+        self.declare_parameter('minClusterDistance', ARGS['minClusterDistance'])
+        self.declare_parameter('clusterEps', ARGS['clusterEps'])
+        self.declare_parameter('clusterMinSamples', ARGS['clusterMinSamples'])
+        self.declare_parameter('scaleRdParticles', ARGS['scaleRdParticles'])
+        self.declare_parameter('minDistance', ARGS['minDistance'])
+        self.declare_parameter('minAngle', ARGS['minAngle'])
+        self.declare_parameter('repropagateCountNeeded', ARGS['repropagateCountNeeded'])
+        self.declare_parameter('HZ', ARGS['HZ'])
+        self.declare_parameter('sim', ARGS['sim'])
+        self.declare_parameter('broadcast_tf', ARGS['broadcast_tf'])
+        self.declare_parameter('use_ekf', ARGS['use_ekf'])
+
+        self.initialize_params()
+
+        
+        self.particles = []        
+        self.particle_weights = np.zeros(self.num_particles)
+        
+        if self.useClustering:
+            from sklearn.cluster import DBSCAN
+            self.cluster_dbscan = DBSCAN(eps=self.cluster_eps, min_samples=int(self.cluster_min_samples), metric='euclidean', n_jobs=-1)
+        
+        self.map = None
+        self.map_received = False
+
+        self.last_odom = None
+        self.odom_received = False
+        self.odom_covariance = np.array([0.2, 0.2, 0.2, 0.2, 0.2, 0.2])
+        self.delta_motion = []
+        
+        self.last_scan = None
+        self.scan_received = False        
+        self.predictionCounter = 0
+
+        self.ekf_tf_mutex = False 
+
+        
+        qos = rclpy.qos.QoSProfile(depth=3)
+        qos.reliability = rclpy.qos.QoSReliabilityPolicy.BEST_EFFORT
+        
+        
+        #### TF HANDLERS ####
+        self.tf_buffer = tf2_ros.Buffer()
+        self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self, qos=qos)
+        self.tf_broadcaster = TransformBroadcaster(self)
+
+        #### PUBLISHERS ####
+        self.scan_pub = self.create_publisher(LaserScan, '/scan_view', 10)
+        self.pose_pub = self.create_publisher(PoseWithCovarianceStamped, '/mcl_pose', 10)
+        self.particles_pub = self.create_publisher(PoseArray, '/particle_cloud', 10)
+        
+        #### SUBSCRIBERS ####
+        
+        self.create_subscription(OccupancyGrid, '/map', self.map_callback, qos)
+        self.create_subscription(Odometry, '/odom', self.odom_callback, qos)
+        self.create_subscription(LaserScan, '/scan', self.scan_callback, qos)
+        self.create_subscription(PoseWithCovarianceStamped, '/initialpose', self.pose_overwrite, qos)
+        self.create_subscription(Bool, '/ekf_tf_mutex', self.update_mutex, qos)
+
+        #### TIMER ####
+        self.timer = self.create_timer(0.05, self.mcl_loop)
+        
+        self.get_logger().info("MCL Node initialized")
+        self.get_logger().info(f"Using C++ MCL library: {cpp_mcl}")
+        self.get_logger().info(f"Using clustering: {self.useClustering}")
+    
+    def initialize_params(self):
+        self.useClustering = self.get_parameter('useClustering').get_parameter_value().bool_value
+        self.num_particles = self.get_parameter('numParticles').get_parameter_value().integer_value
+        self.scan_step = self.get_parameter('scanStep').get_parameter_value().integer_value
+        self.use_ekf = self.get_parameter('use_ekf').get_parameter_value().bool_value
+        self.broadcast_tf = self.get_parameter('broadcast_tf').get_parameter_value().bool_value
+        self.num_dimensions = 3
+        self.min_cluster_distance = self.get_parameter('minClusterDistance').get_parameter_value().double_value
+        self.cluster_eps = self.get_parameter('clusterEps').get_parameter_value().double_value
+        self.cluster_min_samples = int(self.get_parameter('clusterMinSamples').get_parameter_value().double_value * self.num_particles)
+        self.scale_rd_particles = self.get_parameter('scaleRdParticles').get_parameter_value().double_value
+        self.min_distance = self.get_parameter('minDistance').get_parameter_value().double_value
+        self.min_angle = math.radians(self.get_parameter('minAngle').get_parameter_value().double_value)
+        self.repropagateCountNeeded = int(self.get_parameter('repropagateCountNeeded').get_parameter_value().integer_value)
+        self.sim = self.get_parameter('sim').get_parameter_value().bool_value
+        
+    def publish_estimated_pose(self):
+        x, y, theta = self.estimate_pose()
+
+        x, y, theta = float(x), float(y), float(theta)
+
+        msg = PoseWithCovarianceStamped()
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.header.frame_id = 'map'
+
+        msg.pose.pose.position.x = x
+        msg.pose.pose.position.y = y
+        msg.pose.pose.position.z = 0.0
+
+        q = tf_transformations.quaternion_from_euler(0, 0, theta)
+        msg.pose.pose.orientation.x = q[0]
+        msg.pose.pose.orientation.y = q[1]
+        msg.pose.pose.orientation.z = q[2]
+        msg.pose.pose.orientation.w = q[3]
+
+        self.pose_pub.publish(msg)
+
+    def update_mutex(self, msg):
+        self.ekf_tf_mutex = msg.data
+
+    def map_callback(self, msg):    
+        self.map = msg
+
+        if not self.map_received:
+            self.get_logger().info("Map received")
+            self.map_received = True
+
+            # Get map properties
+            self.map_resolution = msg.info.resolution
+            self.map_origin = msg.info.origin.position
+            self.map_width = msg.info.width
+            self.map_height = msg.info.height
+
+            # Convert to 2D array
+            map_data = np.array(msg.data, dtype=np.int8).reshape((self.map_height, self.map_width))
+            self.map_array = map_data
+
+            self.initialize_particles()
+    
+    def pose_overwrite(self, msg):
+        if not self.map_received:
+            self.get_logger().warn("Map not received yet. Cannot overwrite pose.")
+            return
+
+        x = msg.pose.pose.position.x
+        y = msg.pose.pose.position.y
+        theta = tf_transformations.euler_from_quaternion([
+            msg.pose.pose.orientation.x,
+            msg.pose.pose.orientation.y,
+            msg.pose.pose.orientation.z,
+            msg.pose.pose.orientation.w
+        ])[2]
+
+        # Check if the pose is within the map bounds
+        if (x < self.map_origin.x or x > self.map_origin.x + self.map_width * self.map_resolution or
+            y < self.map_origin.y or y > self.map_origin.y + self.map_height * self.map_resolution):
+            self.get_logger().warn("Pose is outside the map bounds. Ignoring.")
+            return
+
+        # Initialize particles with the new pose
+        self.particles = [(x, y, theta) for _ in range(self.num_particles)]
+        self.resample_particles()
+
+            
+    def initialize_particles(self):
+        self.get_logger().info(f"Initializing {self.num_particles} particles")
+        if len(self.particles) == 0:
+            self.get_logger().warn("No particles initialized!")
+        self.map_data = np.array(self.map.data).reshape((self.map.info.height, self.map.info.width))
+        resolution = self.map.info.resolution
+        origin = self.map.info.origin
+
+        free_indices = np.argwhere(self.map_data == 0)  # 0 = free space
+
+        chosen_indices = free_indices[np.random.choice(len(free_indices), self.num_particles)]
+
+        self.particles = []
+        for idx in chosen_indices:
+            y_idx, x_idx = idx
+            x = x_idx * resolution + origin.position.x
+            y = y_idx * resolution + origin.position.y
+            theta = np.random.uniform(-np.pi, np.pi)
+            self.particles.append((x, y, theta))
+
+        # self.publish_particles()
+    
+    
+    def publish_particles(self):
+        pa = PoseArray()
+        pa.header.stamp = self.get_clock().now().to_msg()
+        pa.header.frame_id = 'map'  # This should match your fixed frame in RViz
+
+        for x, y, theta in self.particles:
+            pose = Pose()
+            pose.position.x = float(x)
+            pose.position.y = float(y)
+            pose.position.z = 0.0
+
+            q = self.euler_to_quaternion(0, 0, theta)
+            pose.orientation.x = q[0]
+            pose.orientation.y = q[1]
+            pose.orientation.z = q[2]
+            pose.orientation.w = q[3]
+
+            pa.poses.append(pose)
+
+        self.particles_pub.publish(pa)
+
+    def euler_to_quaternion(self, roll, pitch, yaw):
+        # Returns (x, y, z, w)
+        try:
+            return tf_transformations.quaternion_from_euler(roll, pitch, yaw)
+        except Exception as e:
+            self.get_logger().warn(f"Error converting euler to quaternion: {str(e)}")
+            return (0.0, 0.0, 0.0, 1.0)
+    
+    def scan_callback(self, msg):
+        scan_msg = msg
+        if self.sim:
+            scan_msg.header.stamp = self.get_clock().now().to_msg()
+        scan_msg.angle_increment = scan_msg.angle_increment * self.scan_step
+        scan_msg.ranges = scan_msg.ranges[::self.scan_step]
+        scan_msg.intensities = scan_msg.intensities[::self.scan_step] if scan_msg.intensities else []
+        self.scan_pub.publish(scan_msg)
+        
+        self.transform_laser_scan(msg)
+        self.scan_received = True
+        
+    # transform from msg frame to "laser_frame"
+    def transform_laser_scan(self, scan_msg):
+        self.scan = scan_msg
+        if not self.sim:
+            self.get_logger().info("TRANSFORMING SCAN TO REAL ROBOT FRAME")
+            self.scan.angle_min = scan_msg.angle_min + 3.14
+            self.scan.angle_max = scan_msg.angle_max + 3.14
+
+
+    def odom_callback(self, msg):
+        self.odom = msg
+        self.odom_received = True
+        if self.last_odom is None:
+            self.last_odom = msg
+            return
+        # Save delta odom
+        self.delta_motion = self.compute_odometry_delta(self.last_odom, self.odom)
+        self.last_odom = self.odom
+
+
+    def sensor_update(self):
+        try:
+            if not self.scan_received:
+                return
+            
+            map_array = np.array(self.map.data, dtype=np.int32)
+            map_origin = np.array([self.map_origin.x, self.map_origin.y], dtype=np.float32)
+            map_shape = np.array([self.map_height, self.map_width], dtype=np.int32)
+            scan_angles = np.arange(self.scan.angle_min, self.scan.angle_max, self.scan.angle_increment, dtype=np.float32)
+            scan_ranges = np.array(self.scan.ranges)
+            max_range = self.scan.range_max
+
+            assert len(scan_ranges) == len(scan_angles), "Scan ranges and angles must have the same size"
+            
+            particles = np.array(self.particles, dtype=np.float32).flatten()
+            output_weights = np.zeros(self.num_particles, dtype=np.float32)
+            max_particle = np.zeros(self.num_dimensions, dtype=np.float32)
+        
+            self.mcl_cpp.weight_particles.argtypes = [
+                ctypes.POINTER(ctypes.c_int),                      # map_array
+                ctypes.POINTER(ctypes.c_float),                      # map_origin
+                ctypes.POINTER(ctypes.c_int),                    # map_shape
+                ctypes.c_float,                    # map_resolution
+                ctypes.POINTER(ctypes.c_float),    # scan_angles
+                ctypes.POINTER(ctypes.c_float),    # scan_ranges
+                ctypes.c_int,                      # scan_size
+                ctypes.c_float,                    # max_range
+                ctypes.c_int,                      # scan_step
+                ctypes.c_int,                      # num_particles
+                ctypes.c_int,                      # num_dimensions
+                ctypes.POINTER(ctypes.c_float),    # particles
+                ctypes.POINTER(ctypes.c_float),    # max_particles (OUTPUT)
+                ctypes.POINTER(ctypes.c_float),    # weights (OUTPUT)
+            ]
+            self.mcl_cpp.weight_particles.restype = ctypes.c_bool
+
+            # Convert numpy arrays to ctypes
+            marray_ctypes = map_array.ctypes.data_as(ctypes.POINTER(ctypes.c_int))
+            morigin_ctypes = map_origin.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+            mshape_ctypes = map_shape.ctypes.data_as(ctypes.POINTER(ctypes.c_int))
+
+            sangles_ctypes = scan_angles.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+            sranges_ctypes = scan_ranges.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+            
+            particles_ctypes = particles.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+            max_particle_ctypes = max_particle.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+            out_weights = output_weights.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+
+            success = self.mcl_cpp.weight_particles(
+                marray_ctypes, 
+                morigin_ctypes,
+                mshape_ctypes,
+                self.map_resolution,
+                sangles_ctypes,
+                sranges_ctypes,
+                len(scan_angles),
+                max_range,
+                self.scan_step,
+                self.num_particles,
+                self.num_dimensions,
+                particles_ctypes,
+                max_particle_ctypes,
+                out_weights,
+            )
+
+            if success:
+                self.maxParticle = max_particle
+                self.particle_weights = output_weights
+            else:
+                self.get_logger().warn("C++ resampling failed. Falling back to Python version.")
+
+        except Exception as e:
+            self.get_logger().warn(f"{str(e)}")
+
+    def compute_odometry_delta(self, last_odom, current_odom):
+        def get_pose(odom):
+            pos = odom.pose.pose.position
+            ori = odom.pose.pose.orientation
+            _, _, yaw = tf_transformations.euler_from_quaternion([ori.x, ori.y, ori.z, ori.w])
+            return pos.x, pos.y, yaw
+
+        x1, y1, theta1 = get_pose(last_odom)
+        x2, y2, theta2 = get_pose(current_odom)
+
+        # Delta in world frame
+        dx_world = x2 - x1
+        dy_world = y2 - y1
+        dtheta = self.angle_diff(theta2, theta1)
+
+        # Transform delta into robot (local) frame at time t1
+        dx_local = math.cos(theta1) * dx_world + math.sin(theta1) * dy_world
+        dy_local = -math.sin(theta1) * dx_world + math.cos(theta1) * dy_world
+
+        return dx_local, dy_local, dtheta
+
+    def angle_diff(self, a, b):
+        diff = a - b
+        return (diff + np.pi) % (2 * np.pi) - np.pi
+
+    def motion_update(self, delta):
+        dx, dy, dtheta = delta
+
+        motion_noise = {
+            "x": 0.01,
+            "y": 0.01,
+            "theta": 0.01
+        }
+
+        new_particles = []
+        for x, y, theta in self.particles:
+            # Transform robot-frame delta to world frame using particle's heading
+            dx_world = dx * math.cos(theta) - dy * math.sin(theta)
+            dy_world = dx * math.sin(theta) + dy * math.cos(theta)
+
+            x_new = x + dx_world + np.random.normal(0, motion_noise["x"])
+            y_new = y + dy_world + np.random.normal(0, motion_noise["y"])
+            theta_new = theta + dtheta + np.random.normal(0, motion_noise["theta"])
+            theta_new =  (theta_new + math.pi) % (2 * math.pi) - math.pi 
+
+            new_particles.append((x_new, y_new, theta_new))
+
+
+    
+    def angle_diff(self, a, b):
+        diff = a - b
+        return (diff + np.pi) % (2 * np.pi) - np.pi
+
+    #TODO: this function is good but slow, DBSSCAN compute wise is not efficient, need to find a better way to cluster
+    def estimate_pose(self):
+        if hasattr(self, 'maxParticle'):
+            return np.array([float(self.maxParticle[0]), float(self.maxParticle[1]), float(self.maxParticle[2])])
+        else: 
+            return np.array([0.0, 0.0, 0.0])
+        if self.useClustering:
+            clusters = self.cluster_dbscan.fit(self.particles)
+            unique_labels = set(clusters.labels_)
+            if -1 in unique_labels:
+                unique_labels.remove(-1)
+            if len(unique_labels) == 0:
+                if hasattr(self, 'maxParticle'):
+                    return np.array([float(self.maxParticle[0]), float(self.maxParticle[1]), float(self.maxParticle[2])])
+                else: 
+                    return np.array([0.0, 0.0, 0.0])
+                
+            maxParticle = self.maxParticle if hasattr(self, 'maxParticle') else np.array([0.0, 0.0, 0.0])
+            minDistance = 1000000
+            bestCluster = None
+            # Look for maxParticle in clusters
+            for label in unique_labels:
+                if label == -1:
+                    continue
+                cluster_indices = np.where(clusters.labels_ == label)[0]
+                cluster_particles = [self.particles[i] for i in cluster_indices]
+                cluster_center = np.mean(cluster_particles, axis=0)
+                if np.linalg.norm(cluster_center - maxParticle) < minDistance and np.linalg.norm(cluster_center - maxParticle) < self.min_cluster_distance:
+                    minDistance = np.linalg.norm(cluster_center - maxParticle)
+                    bestCluster = np.mean(cluster_particles, axis=0)
+            
+            return bestCluster if bestCluster is not None else maxParticle     
+        if hasattr(self, 'maxParticle'):
+            return np.array([float(self.maxParticle[0]), float(self.maxParticle[1]), float(self.maxParticle[2])])
+        return np.array([0.0, 0.0, 0.0])
+    
+    def resample_particles(self):
+        # Prepare arguments
+        weights = self.particle_weights.astype(np.float32)
+        particles = np.array(self.particles, dtype=np.float32).flatten()
+        resampled_particles = np.zeros_like(particles)
+        
+        # Define the function signature
+        self.mcl_cpp.resample_particles.argtypes = [
+            ctypes.c_int,                      # num_particles
+            ctypes.c_int,                      # num_dimensions
+            ctypes.c_float,                    # theta_noise
+            ctypes.c_float,                    # trans_noise
+            ctypes.POINTER(ctypes.c_float),    # weights
+            ctypes.POINTER(ctypes.c_float),    # particles
+            ctypes.POINTER(ctypes.c_float)     # resampled_particles
+        ]
+        self.mcl_cpp.resample_particles.restype = ctypes.c_bool
+
+        # Convert numpy arrays to ctypes
+        weights_ctypes = weights.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+        particles_ctypes = particles.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+        resampled_ctypes = resampled_particles.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+
+        # Call the function
+        success = self.mcl_cpp.resample_particles(
+            self.num_particles,
+            self.num_dimensions,
+            np.float32((np.pi / 32)),
+            np.float32(0.04),
+            weights_ctypes,
+            particles_ctypes,
+            resampled_ctypes
+        )
+
+        if success:
+            self.particles  = resampled_particles.reshape((self.num_particles, 3)).tolist()
+
+            self.particle_weights = np.ones(self.num_particles)
+            self.particle_weights /= self.num_particles
+        else:
+            self.get_logger().warn("C++ resampling failed. Falling back to Python version.")
+
+
+    def broadcast_transform(self):
+        try:
+            x, y, theta = self.estimate_pose()
+
+            x, y, theta = float(x), float(y), float(theta)
+
+            # Get odom -> base_link transform
+            trans = self.tf_buffer.lookup_transform(
+                'odom',
+                'base_link',
+                rclpy.time.Time(),
+                timeout=rclpy.duration.Duration(seconds=1.0)
+            )
+
+            # Compose transformation: map -> base_link
+            map_to_base = tf_transformations.compose_matrix(
+                translate=[x, y, 0],
+                angles=[0, 0, theta]
+            )
+
+            # Compose transformation: odom -> base_link (from TF)
+            trans_translation = trans.transform.translation
+            trans_rotation = trans.transform.rotation
+            odom_to_base = tf_transformations.compose_matrix(
+                translate=[trans_translation.x, trans_translation.y, trans_translation.z],
+                angles=tf_transformations.euler_from_quaternion([
+                    trans_rotation.x,
+                    trans_rotation.y,
+                    trans_rotation.z,
+                    trans_rotation.w
+                ])
+            )
+
+            # map -> odom = map -> base × inverse(odom -> base)
+            base_to_odom = np.linalg.inv(odom_to_base)
+            map_to_odom = np.dot(map_to_base, base_to_odom)
+
+            translation = map_to_odom[:3, 3]
+            rotation = tf_transformations.quaternion_from_matrix(map_to_odom)
+
+            t = TransformStamped()
+            t.header.stamp = self.get_clock().now().to_msg()
+            t.header.frame_id = 'map'
+            t.child_frame_id = 'odom'
+            t.transform.translation.x = translation[0]
+            t.transform.translation.y = translation[1]
+            t.transform.translation.z = translation[2]
+            t.transform.rotation.x = rotation[0]
+            t.transform.rotation.y = rotation[1]
+            t.transform.rotation.z = rotation[2]
+            t.transform.rotation.w = rotation[3]
+
+            self.tf_broadcaster.sendTransform(t)
+
+        except Exception as e:
+            self.get_logger().warn(f"TF broadcast error: {str(e)}")
+
+
+    def mcl_loop(self):
+        if self.map is None:
+            return
+        if self.particles is None or len(self.particles) == 0:
+            return
+        if len(self.delta_motion) <= 0:
+            return
+        
+        self.prev_time = time()        
+        diffDistance = math.sqrt(self.delta_motion[0]**2 + self.delta_motion[1]**2)
+        diffAngle = abs(self.delta_motion[2])*180.0/3.141592
+
+        if diffDistance > self.min_distance or diffAngle > self.min_angle:
+            self.motion_update(self.delta_motion)       
+            
+
+            self.sensor_update()
+            
+            self.predictionCounter += 1
+            neff = 1.0 / np.sum(np.square(self.particle_weights))
+
+            if (neff > self.num_particles * 0.1) and (self.predictionCounter >= self.repropagateCountNeeded):
+                self.resample_particles()
+                self.predictionCounter = 0
+
+        self.publish_particles()
+        self.publish_estimated_pose()
+
+        if self.broadcast_tf:
+            if self.use_ekf and self.ekf_tf_mutex:
+                return
+            self.broadcast_transform()   
+
+        # self.get_logger().info(f"Elapsed time: {time() - self.prev_time}")
+
+
+def main(args=None):
+    np.seterr(over='raise')
+    rclpy.init(args=args)
+    node = MCLNode()
+    rclpy.spin(node)
+    rclpy.shutdown()
+        
+if __name__ == '__main__':
+    main()
+
